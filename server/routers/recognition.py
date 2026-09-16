@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Form
+from fastapi import APIRouter, Depends, UploadFile, File, Form, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import threading
@@ -16,12 +16,40 @@ from server.dependencies.auth import verify_token
 from server.dependencies.uploadFile import upload_file
 from server.models.person import Person
 from server.models.patient import Patient
+from server.config.db import SessionLocal
 
 router = APIRouter(prefix="/recognition", tags=["Face Recognition"])
+
+# In-memory dictionary to track background job statuses
+# Key: person_id, Value: {"status": "processing" | "completed" | "error", "error": None | "msg"}
+_face_jobs = {}
+
+def process_face_embeddings(person_id: int, image_bytes: bytes):
+    db: Session = SessionLocal()
+    try:
+        from server.services.face_service import store_face_embeddings_for_person
+        store_face_embeddings_for_person(db, person_id, image_bytes)
+        _face_jobs[person_id] = {"status": "completed"}
+    except ValueError as e:
+        _face_jobs[person_id] = {"status": "error", "error": str(e)}
+        try:
+            person = db.query(Person).filter(Person.id == person_id).first()
+            if person:
+                db.delete(person)
+                db.commit()
+        except Exception as cleanup_err:
+            logger.error(f"Failed to cleanup person after embedding error: {cleanup_err}")
+    except Exception as e:
+        logger.error(f"Background embedding failed: {e}")
+        _face_jobs[person_id] = {"status": "error", "error": "Internal processing error"}
+    finally:
+        db.close()
+
 
 
 @router.post("/store_known_face", response_model=StoreFaceResponse)
 async def store_face(
+    background_tasks: BackgroundTasks,
     patient_id: int = Form(..., description="ID of the patient this person belongs to"),
     name: str = Form(..., description="Full name of the person, e.g. 'Rahul Singh'"),
     relation: str = Form(..., description="Relation to patient, e.g. 'son'"),
@@ -29,40 +57,58 @@ async def store_face(
     db: Session = Depends(get_db),
     token_data: dict = Depends(verify_token),
 ):
-    """
-    Register a known person for a patient by uploading their photo.
-
-    - Detects the face in the photo
-    - Generates a 512-d embedding
-    - Stores both the Person record and the FaceEmbedding in the database
-
-    Send as multipart/form-data with fields: patient_id, name, relation, file.
-    """
     image_bytes = await file.read()
 
-    try:
-        # Upload the image to Cloudinary
-        image_url = upload_file(image_bytes, folder=f"known_faces/{patient_id}")
+    # Upload the image to Cloudinary (fast)
+    image_url = upload_file(image_bytes, folder=f"known_faces/{patient_id}")
 
-        person, embeddings = face_service.addPerson(
-            db, patient_id, name, relation, True, image_bytes, image_url
-        )
-    except ValueError as e:
-        raise ApiError(status_code=400, message=str(e))
+    # Create the Person row without embeddings yet (fast)
+    person = Person(
+        patient_id=patient_id,
+        name=name,
+        relation=relation,
+        is_known=True,
+        image_url=image_url,
+    )
+    db.add(person)
+    db.commit()
+    db.refresh(person)
+
+    # Mark job as processing and start background task
+    _face_jobs[person.id] = {"status": "processing"}
+    background_tasks.add_task(process_face_embeddings, person.id, image_bytes)
 
     return StoreFaceResponse(
         success=True,
-        message=f"Registered '{name}' ({relation}) with {len(embeddings)} face embedding(s).",
+        message=f"Registered '{name}' ({relation}). Embedding is being generated in the background.",
         data={
             "person_id":        person.id,
             "name":             person.name,
             "relation":         person.relation,
             "is_known":         person.is_known,
             "image_url":        person.image_url,
-            "embeddings_stored": len(embeddings),
-            "embedding_ids":    [e.id for e in embeddings],
+            "embeddings_stored": 0,
+            "embedding_ids":    [],
         },
     )
+
+@router.get("/job-status/{person_id}")
+def get_job_status(person_id: int, db: Session = Depends(get_db)):
+    """Poll endpoint to check background face extraction status."""
+    job = _face_jobs.get(person_id)
+    if not job:
+        # Check DB directly in case server restarted or job cleared
+        person = db.query(Person).filter(Person.id == person_id).first()
+        if not person:
+            return ApiResponse(success=False, message="Person not found", data={"status": "error", "error": "Person not found"})
+        # If they exist and have embeddings, it's done.
+        if len(person.embeddings) > 0:
+            return ApiResponse(success=True, message="Completed", data={"status": "completed"})
+        else:
+            return ApiResponse(success=False, message="Unknown state", data={"status": "error", "error": "Unknown background state"})
+    
+    return ApiResponse(success=True, message="Status fetched", data=job)
+
 
 
 class SuggestIdentityBody(BaseModel):

@@ -11,7 +11,10 @@ import { useMatchFaceMutation, useGetConversationsForPersonQuery, useSuggestIden
 import type { MatchFaceData } from "@/types";
 import { useTranscription } from "@/hooks/useTranscription";
 import { cn } from "@/lib/utils";
-
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function toUtc(iso: string) {
   return iso.endsWith("Z") ? iso : iso + "Z";
@@ -47,6 +50,7 @@ const relColor = (rel: string | null) =>
   RELATION_COLORS[(rel ?? "").toLowerCase()] ?? "bg-muted text-muted-foreground";
 
 // ─── Suggest identity form (shown when face is not recognised) ───────────────
+// ─── Suggest identity form (shown when face is not recognised) ───────────────
 function SuggestIdentityForm({
   unknownPersonId,
   patientId,
@@ -73,12 +77,10 @@ function SuggestIdentityForm({
       msg.onend = () => setIsSpeaking(false);
       msg.onerror = () => setIsSpeaking(false);
       
-      window.speechSynthesis.cancel(); // stop any current speech
+      window.speechSynthesis.cancel();
       window.speechSynthesis.speak(msg);
 
-      return () => {
-        window.speechSynthesis.cancel();
-      };
+      return () => window.speechSynthesis.cancel();
     }
   }, []);
 
@@ -86,10 +88,7 @@ function SuggestIdentityForm({
     e.preventDefault();
     if (listeningField === field) return;
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Speech recognition is not supported in this browser. Please try Chrome or Edge.");
-      return;
-    }
+    if (!SpeechRecognition) return;
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'en-US';
@@ -103,25 +102,14 @@ function SuggestIdentityForm({
 
     recognition.onresult = (e: any) => {
       const transcript = e.results[0][0].transcript;
-      console.log(`Voice captured for ${field}:`, transcript);
       if (field === "name") setName(transcript);
       else setRelation(transcript);
       setListeningField(null);
     };
 
-    recognition.onerror = (e: any) => {
-      console.error("Speech recognition error:", e.error);
-      setListeningField(null);
-    };
-    
+    recognition.onerror = () => setListeningField(null);
     recognition.onend = () => setListeningField(null);
-    
-    try {
-      recognition.start();
-    } catch (err) {
-      console.error("Speech recognition failed to start:", err);
-      setListeningField(null);
-    }
+    try { recognition.start(); } catch (err) { setListeningField(null); }
   };
 
   const handleSubmit = async () => {
@@ -131,84 +119,76 @@ function SuggestIdentityForm({
   };
 
   if (submitted) return (
-    <div className="flex flex-col items-center gap-3 py-6 text-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-emerald-500/10">
-        <CheckCircle2 className="size-6 text-emerald-600" />
+    <div className="flex flex-col items-center gap-3 py-10 text-center px-4">
+      <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 border border-primary/20">
+        <CheckCircle2 className="size-6 text-primary" />
       </div>
-      <p className="font-semibold">Suggestion sent!</p>
-      <p className="text-sm text-muted-foreground">Your caregiver will verify and add this person.</p>
-      <div className="flex gap-2 mt-1 w-full justify-center">
-        <button onClick={onContinue} className="flex items-center justify-center gap-2 rounded-xl bg-foreground text-background px-4 py-2 text-sm font-semibold hover:opacity-80 transition-opacity">
-          <MessageSquare className="size-4" /> Start
-        </button>
-        <button onClick={onRetry} className="flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-muted transition-colors">
-          <ScanFace className="size-4" /> Scan again
-        </button>
+      <p className="font-semibold text-lg tracking-tight">Suggestion sent</p>
+      <p className="text-sm text-muted-foreground">Caregiver will verify and add this person.</p>
+      <div className="flex gap-2 mt-4 w-full justify-center">
+        <Button onClick={onContinue} className="w-full max-w-[140px]"><MessageSquare className="size-4 mr-2" /> Start</Button>
+        <Button onClick={onRetry} variant="outline" className="w-full max-w-[140px]"><ScanFace className="size-4 mr-2" /> Scan again</Button>
       </div>
     </div>
   );
 
   return (
-    <div className="flex flex-col gap-4 py-4 px-2">
+    <div className="flex flex-col gap-5 py-6 px-5">
       <div className="flex flex-col items-center gap-2 text-center relative">
-        <div className="flex size-14 items-center justify-center rounded-2xl bg-muted">
-          <UserX className="size-7 text-muted-foreground" />
+        <div className="flex size-14 items-center justify-center rounded-full bg-muted border border-border">
+          <UserX className="size-6 text-muted-foreground" />
         </div>
         {isSpeaking && (
-          <div className="absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full bg-emerald-500 text-white animate-bounce shadow-md">
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
+          <div className="absolute top-0 right-1/4 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+             <Mic className="size-3" />
           </div>
         )}
-        <p className="font-bold text-base">Not recognised</p>
-        <p className="text-sm text-muted-foreground">Do you know this person? Tell us who they are.</p>
+        <p className="font-semibold text-lg tracking-tight">Not recognized</p>
+        <p className="text-sm text-muted-foreground">Please tell us who they are.</p>
       </div>
-      <div className="space-y-2">
+      
+      <div className="space-y-3">
         <div className="relative">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Their name (e.g. Rahul)"
-            className="w-full rounded-xl border border-border bg-muted/40 pl-3 pr-10 py-2.5 text-sm outline-none focus:border-foreground/40 transition-colors"
+          <Input 
+            value={name} onChange={(e) => setName(e.target.value)} 
+            placeholder="Their name (e.g. Rahul)" 
+            className="pr-10" 
           />
-          <button 
+          <Button 
+            variant="ghost" size="icon"
             onClick={(e) => handleVoiceInput(e, "name")} 
-            className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors ${listeningField === "name" ? 'bg-rose-500/20 text-rose-500' : 'text-muted-foreground hover:bg-muted'}`}
+            className={cn("absolute right-1 top-1/2 -translate-y-1/2 size-8", listeningField === "name" && "text-primary bg-primary/10 hover:bg-primary/20")}
           >
             <Mic className="size-4" />
-          </button>
+          </Button>
         </div>
         <div className="relative">
-          <input
-            value={relation}
-            onChange={(e) => setRelation(e.target.value)}
-            placeholder="Relation (e.g. son, doctor)"
-            className="w-full rounded-xl border border-border bg-muted/40 pl-3 pr-10 py-2.5 text-sm outline-none focus:border-foreground/40 transition-colors"
+          <Input 
+            value={relation} onChange={(e) => setRelation(e.target.value)} 
+            placeholder="Relation (e.g. son, doctor)" 
+            className="pr-10" 
           />
-          <button 
+          <Button 
+            variant="ghost" size="icon"
             onClick={(e) => handleVoiceInput(e, "relation")} 
-            className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors ${listeningField === "relation" ? 'bg-rose-500/20 text-rose-500' : 'text-muted-foreground hover:bg-muted'}`}
+            className={cn("absolute right-1 top-1/2 -translate-y-1/2 size-8", listeningField === "relation" && "text-primary bg-primary/10 hover:bg-primary/20")}
           >
             <Mic className="size-4" />
-          </button>
+          </Button>
         </div>
       </div>
-      <div className="flex flex-col gap-2">
+      
+      <div className="flex flex-col gap-2 mt-2">
         <div className="flex gap-2">
-          <button
-            onClick={handleSubmit}
-            disabled={isLoading || !name.trim() || !relation.trim()}
-            className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-foreground text-background py-2.5 text-sm font-semibold hover:opacity-80 transition-opacity disabled:opacity-40"
-          >
-            {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+          <Button onClick={handleSubmit} disabled={isLoading || !name.trim() || !relation.trim()} className="flex-1">
+            {isLoading ? <Loader2 className="size-4 animate-spin mr-2" /> : <Send className="size-4 mr-2" />}
             Send for verification
-          </button>
-          <button onClick={onRetry} className="flex items-center justify-center rounded-xl border border-border px-3 hover:bg-muted transition-colors">
-            <RefreshCw className="size-4" />
-          </button>
+          </Button>
+          <Button onClick={onRetry} variant="outline" size="icon"><RefreshCw className="size-4" /></Button>
         </div>
-        <button onClick={onContinue} className="w-full flex items-center justify-center gap-2 rounded-xl border border-border bg-muted/30 py-2 text-sm font-semibold hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
-          <MessageSquare className="size-4" /> Skip & start conversation
-        </button>
+        <Button onClick={onContinue} variant="secondary" className="w-full text-muted-foreground hover:text-foreground">
+          Skip & start conversation
+        </Button>
       </div>
     </div>
   );
@@ -231,81 +211,75 @@ function RecognitionCard({
   const isRec  = d && "recognised" in d && d.recognised;
 
   if (noFace) return (
-    <div className="flex flex-col items-center gap-4 py-8 text-center">
-      <div className="flex size-16 items-center justify-center rounded-2xl bg-amber-500/10">
-        <AlertCircle className="size-8 text-amber-500" />
+    <div className="flex flex-col items-center gap-4 py-8 text-center px-4">
+      <div className="flex size-14 items-center justify-center rounded-full bg-muted border border-border">
+        <AlertCircle className="size-6 text-muted-foreground" />
       </div>
       <div>
-        <p className="font-bold text-lg">No face detected</p>
+        <p className="font-semibold text-lg tracking-tight">No face detected</p>
         <p className="text-sm text-muted-foreground mt-1">Ensure good lighting and face clearly visible.</p>
       </div>
-      <button onClick={onRetry} className="flex items-center gap-2 rounded-xl bg-foreground text-background px-5 py-2.5 text-sm font-semibold hover:opacity-80 transition-opacity">
-        <RefreshCw className="size-4" /> Try again
-      </button>
+      <Button onClick={onRetry} className="mt-4 w-full max-w-[200px]">
+        <RefreshCw className="size-4 mr-2" /> Try again
+      </Button>
     </div>
   );
 
   if (isRec && "name" in d) return (
-    <div className="flex flex-col items-center gap-5 py-6 text-center">
+    <div className="flex flex-col items-center gap-5 py-8 text-center px-4">
       <div className="relative">
         {d.image_url ? (
-          <img
-            src={d.image_url}
-            alt={d.name}
-            className="size-20 rounded-2xl object-cover ring-4 ring-emerald-500/20"
-          />
+          <img src={d.image_url} alt={d.name} className="size-20 rounded-full object-cover ring-1 ring-border shadow-sm" />
         ) : (
-          <div className="flex size-20 items-center justify-center rounded-2xl bg-emerald-500/10 ring-4 ring-emerald-500/20">
-            <UserCheck className="size-10 text-emerald-600" />
+          <div className="flex size-20 items-center justify-center rounded-full bg-muted border border-border shadow-sm">
+            <UserCheck className="size-8 text-muted-foreground" />
           </div>
         )}
-        <div className="absolute -bottom-1 -right-1 flex size-7 items-center justify-center rounded-full bg-emerald-500 ring-2 ring-card">
-          <CheckCircle2 className="size-4 text-white" />
+        <div className="absolute -bottom-1 -right-1 flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+          <CheckCircle2 className="size-3.5" />
         </div>
       </div>
       <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-600 mb-1">Recognised</p>
-        <p className="text-3xl font-bold">{d.name}</p>
-        <span className={cn("inline-block mt-1.5 rounded-full px-3 py-0.5 text-xs font-semibold capitalize", relColor(d.relation))}>
-          {d.relation}
-        </span>
+        <p className="text-xs font-medium text-muted-foreground mb-1">Recognized Identity</p>
+        <p className="text-2xl font-bold tracking-tight">{d.name}</p>
+        <Badge variant="secondary" className="mt-2 capitalize">{d.relation}</Badge>
       </div>
-      <div className="w-full max-w-[200px]">
-        <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-          <span>Confidence</span>
-          <span className="font-bold text-foreground">{Math.round(d.similarity * 100)}%</span>
+      <div className="w-full max-w-[200px] mt-2">
+        <div className="flex justify-between text-xs text-muted-foreground mb-1.5 font-medium">
+          <span>Confidence Match</span>
+          <span className="text-foreground">{Math.round(d.similarity * 100)}%</span>
         </div>
-        <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-          <div className="h-full rounded-full bg-emerald-500 transition-all duration-700" style={{ width: `${Math.round(d.similarity * 100)}%` }} />
+        <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden">
+          <div className="h-full rounded-full bg-primary transition-all duration-700" style={{ width: `${Math.round(d.similarity * 100)}%` }} />
         </div>
       </div>
-      <button onClick={onRetry} className="flex items-center gap-2 rounded-xl border border-border px-5 py-2 text-sm font-semibold hover:bg-muted transition-colors">
-        <ScanFace className="size-4" /> Scan again
-      </button>
+      <Button onClick={onRetry} variant="outline" className="mt-4 w-full max-w-[200px]">
+        <ScanFace className="size-4 mr-2" /> Scan again
+      </Button>
     </div>
   );
 
-  // Unknown face — show suggestion form
   const unknownPersonId = d && "unknown_face_id" in d ? d.unknown_face_id : null;
   if (unknownPersonId) {
     return <SuggestIdentityForm unknownPersonId={unknownPersonId} patientId={patientId} onRetry={onRetry} onContinue={onContinue} />;
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 py-8 text-center">
-      <div className="flex size-16 items-center justify-center rounded-2xl bg-muted">
-        <UserX className="size-8 text-muted-foreground" />
+    <div className="flex flex-col items-center gap-4 py-8 text-center px-4">
+      <div className="flex size-14 items-center justify-center rounded-full bg-muted border border-border">
+        <UserX className="size-6 text-muted-foreground" />
       </div>
       <div>
-        <p className="font-bold text-lg">Not recognised</p>
+        <p className="font-semibold text-lg tracking-tight">Not recognized</p>
         <p className="text-sm text-muted-foreground mt-1">This face hasn't been registered.</p>
       </div>
-      <button onClick={onRetry} className="flex items-center gap-2 rounded-xl border border-border px-5 py-2 text-sm font-semibold hover:bg-muted transition-colors">
-        <RefreshCw className="size-4" /> Try again
-      </button>
+      <Button onClick={onRetry} variant="outline" className="mt-4 w-full max-w-[200px]">
+        <RefreshCw className="size-4 mr-2" /> Try again
+      </Button>
     </div>
   );
 }
+
 
 // ─── Visitor Notification Card ────────────────────────────────────────────────
 function VisitorNotificationCard({
@@ -314,36 +288,33 @@ function VisitorNotificationCard({
   name: string; relation: string; imageUrl?: string; onDismiss: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-3xl border-2 border-emerald-500/40 bg-card shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300">
-        <div className="bg-gradient-to-br from-emerald-500/20 to-teal-500/10 px-6 pt-8 pb-6 flex flex-col items-center gap-4 text-center">
-          <div className="relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+      <Card className="w-full max-w-sm animate-in fade-in zoom-in-95 shadow-lg border-border">
+        <CardHeader className="text-center pt-8">
+          <div className="mx-auto relative mb-4">
             {imageUrl ? (
-              <img src={imageUrl} alt={name} className="size-28 rounded-full object-cover ring-4 ring-emerald-500/40 shadow-xl" />
+              <img src={imageUrl} alt={name} className="size-24 rounded-full object-cover ring-1 ring-border shadow-sm" />
             ) : (
-              <div className="flex size-28 items-center justify-center rounded-full bg-emerald-500/15 ring-4 ring-emerald-500/40">
-                <Heart className="size-12 text-emerald-600" />
+              <div className="flex size-24 items-center justify-center rounded-full bg-muted border border-border shadow-sm">
+                <Heart className="size-10 text-muted-foreground" />
               </div>
             )}
-            <div className="absolute -bottom-1 -right-1 flex size-8 items-center justify-center rounded-full bg-emerald-500 ring-2 ring-card">
-              <Bell className="size-4 text-white" />
+            <div className="absolute -bottom-1 -right-1 flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+              <Bell className="size-4" />
             </div>
           </div>
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-600 mb-1">Someone is here to visit you!</p>
-            <p className="text-3xl font-bold tracking-tight">{name}</p>
-            <span className="inline-block mt-2 rounded-full bg-emerald-500/15 px-4 py-1 text-sm font-semibold text-emerald-700 capitalize">{relation}</span>
+          <CardTitle className="text-2xl font-bold tracking-tight">{name}</CardTitle>
+          <CardDescription className="text-sm mt-1">Someone is here to visit you</CardDescription>
+          <div className="mt-3">
+            <Badge variant="secondary" className="capitalize text-sm font-medium px-3 py-1">{relation}</Badge>
           </div>
-        </div>
-        <div className="px-6 pb-6 pt-4">
-          <button
-            onClick={onDismiss}
-            className="w-full rounded-2xl bg-foreground text-background py-3 text-sm font-bold hover:opacity-80 transition-opacity"
-          >
+        </CardHeader>
+        <CardFooter className="pb-6">
+          <Button onClick={onDismiss} className="w-full h-11" size="lg">
             Great, thank you!
-          </button>
-        </div>
-      </div>
+          </Button>
+        </CardFooter>
+      </Card>
     </div>
   );
 }
@@ -358,100 +329,89 @@ function PersonHistoryPanel({ personId, personName }: { personId: number; person
   if (isLoading) return (
     <div className="flex items-center justify-center py-4">
       <Loader2 className="size-4 animate-spin text-muted-foreground" />
-      <span className="ml-2 text-xs text-muted-foreground">Loading past conversations…</span>
+      <span className="ml-2 text-sm text-muted-foreground">Loading history...</span>
     </div>
   );
 
   if (data?.data?.history_restricted) return (
-    <div className="rounded-xl border border-dashed border-border px-4 py-3 text-center">
-      <p className="text-xs text-muted-foreground">Previous conversation history is restricted. Focusing on today's visit.</p>
-    </div>
+    <Card className="bg-muted/50 border-dashed border-border shadow-none">
+      <CardContent className="p-4 text-center">
+        <p className="text-sm text-muted-foreground">History is restricted. Focusing on today's visit.</p>
+      </CardContent>
+    </Card>
   );
 
   if (convs.length === 0) return (
-    <div className="rounded-xl border border-dashed border-border px-4 py-3 text-center">
-      <p className="text-xs text-muted-foreground">No previous conversations with {personName}.</p>
-    </div>
+    <Card className="bg-muted/50 border-dashed border-border shadow-none">
+      <CardContent className="p-4 text-center">
+        <p className="text-sm text-muted-foreground">No previous conversations with {personName}.</p>
+      </CardContent>
+    </Card>
   );
 
-  // Most recent conversation that has a summary — shown prominently
   const latestWithSummary = convs.find((c) => c.summary);
   const olderConvs = showAll ? convs.slice(1) : [];
 
   return (
-    <div className="space-y-2">
-      {/* ── Latest summary card (always visible) ── */}
+    <div className="space-y-3">
       {latestWithSummary && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-emerald-500/20">
-            <Brain className="size-3.5 text-emerald-600" />
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
-              Last visit with {personName}
-            </span>
-            <span className="ml-auto text-[10px] text-muted-foreground">
-              {timeAgo(latestWithSummary.started_at)}
-            </span>
-          </div>
-          <div className="px-4 py-3">
-            <div className="text-sm text-foreground leading-relaxed whitespace-pre-line">
-              {latestWithSummary.summary}
+        <Card className="bg-primary/5 border-primary/20 shadow-sm">
+          <CardHeader className="p-4 pb-2 border-b border-primary/10 flex flex-row items-center justify-between space-y-0">
+            <div className="flex items-center gap-2">
+              <Brain className="size-4 text-primary" />
+              <CardTitle className="text-xs font-semibold uppercase tracking-tight text-primary">Last visit</CardTitle>
             </div>
-          </div>
-        </div>
+            <span className="text-xs text-muted-foreground font-medium">{timeAgo(latestWithSummary.started_at)}</span>
+          </CardHeader>
+          <CardContent className="p-4 pt-3">
+            <p className="text-sm leading-relaxed text-foreground whitespace-pre-line">{latestWithSummary.summary}</p>
+          </CardContent>
+        </Card>
       )}
 
-      {/* ── Older conversations (collapsible list) ── */}
       {convs.length > 1 && (
         <>
-          <button
-            onClick={() => setShowAll((v) => !v)}
-            className="w-full flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
-          >
-            <History className="size-3.5" />
-            <span>{showAll ? "Hide" : "Show"} {convs.length - 1} older conversation{convs.length - 1 !== 1 ? "s" : ""}</span>
-            {showAll ? <ChevronUp className="size-3 ml-auto" /> : <ChevronDown className="size-3 ml-auto" />}
-          </button>
+          <Button variant="ghost" size="sm" onClick={() => setShowAll(!showAll)} className="w-full text-muted-foreground">
+            <History className="size-4 mr-2" />
+            {showAll ? "Hide" : "Show"} {convs.length - 1} older conversation{convs.length - 1 !== 1 ? "s" : ""}
+            {showAll ? <ChevronUp className="size-4 ml-auto" /> : <ChevronDown className="size-4 ml-auto" />}
+          </Button>
 
           {showAll && olderConvs.map((conv) => {
             const isOpen = expandedId === conv.id;
             return (
-              <div key={conv.id} className="rounded-xl border border-border bg-muted/30 overflow-hidden">
-                <button
-                  onClick={() => setExpandedId(isOpen ? null : conv.id)}
-                  className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Clock className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="text-sm font-medium truncate">{formatDate(conv.started_at)}</span>
+              <Card key={conv.id} className="overflow-hidden shadow-sm">
+                <Button variant="ghost" onClick={() => setExpandedId(isOpen ? null : conv.id)} className="w-full h-auto px-4 py-3 flex items-center justify-between rounded-none hover:bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    <Clock className="size-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">{formatDate(conv.started_at)}</span>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
-                    {conv.summary && (
-                      <span className="text-[10px] font-medium bg-foreground/8 px-2 py-0.5 rounded-full">Summary</span>
-                    )}
-                    {isOpen ? <ChevronUp className="size-3.5 text-muted-foreground" /> : <ChevronDown className="size-3.5 text-muted-foreground" />}
+                  <div className="flex items-center gap-2">
+                    {conv.summary && <Badge variant="outline" className="text-[10px]">Summary</Badge>}
+                    {isOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
                   </div>
-                </button>
+                </Button>
                 {isOpen && (
-                  <div className="px-4 pb-4 space-y-3 border-t border-border">
+                  <CardContent className="p-4 border-t border-border space-y-4 bg-muted/20">
                     {conv.summary && (
-                      <div className="mt-3 rounded-xl bg-foreground/5 border border-border p-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">AI Summary</p>
-                        <div className="text-sm text-foreground leading-relaxed whitespace-pre-line">{conv.summary}</div>
+                      <div className="rounded-lg bg-background border border-border p-3">
+                        <p className="text-xs font-semibold text-muted-foreground mb-2">AI Summary</p>
+                        <p className="text-sm leading-relaxed">{conv.summary}</p>
                       </div>
                     )}
                     {conv.transcripts.length > 0 && (
-                      <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Transcript</p>
+                      <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                        <p className="text-xs font-semibold text-muted-foreground">Transcript</p>
                         {conv.transcripts.map((t) => (
-                          <p key={t.id} className="text-xs text-muted-foreground leading-relaxed border-l-2 border-border pl-2.5 py-0.5">
+                          <div key={t.id} className="text-sm text-muted-foreground leading-relaxed border-l-2 border-border pl-3 py-1">
                             {t.text}
-                          </p>
+                          </div>
                         ))}
                       </div>
                     )}
-                  </div>
+                  </CardContent>
                 )}
-              </div>
+              </Card>
             );
           })}
         </>
@@ -545,9 +505,8 @@ function CameraPanel({
   }, [capture]);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Viewport */}
-      <div className="relative flex-1 bg-black rounded-2xl overflow-hidden min-h-[200px]">
+    <div className="flex flex-col h-full space-y-4">
+      <Card className="flex-1 overflow-hidden relative min-h-[300px] flex flex-col items-center justify-center bg-black rounded-lg border-0 shadow-none">
         <video
           ref={videoRef}
           className={cn("h-full w-full object-cover transition-opacity", !camActive && "opacity-0")}
@@ -557,86 +516,79 @@ function CameraPanel({
 
         {!camActive && !result && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <div className="flex size-14 items-center justify-center rounded-2xl bg-white/10">
+            <div className="flex size-14 items-center justify-center rounded-full bg-white/10">
               <CameraOff className="size-6 text-white/50" />
             </div>
-            <p className="text-sm text-white/40">Camera not active</p>
+            <p className="text-sm font-medium text-white/40">Camera is off</p>
           </div>
         )}
 
-        {/* Scan frame */}
         {camActive && !scanning && countdown === null && (
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-            <div className="relative w-40 h-48">
+            <div className="relative w-48 h-56">
               {(["tl","tr","bl","br"] as const).map((p) => (
-                <div key={p} className={cn("absolute size-5 border-white/70",
-                  p === "tl" && "top-0 left-0 border-t-[2.5px] border-l-[2.5px] rounded-tl-lg",
-                  p === "tr" && "top-0 right-0 border-t-[2.5px] border-r-[2.5px] rounded-tr-lg",
-                  p === "bl" && "bottom-0 left-0 border-b-[2.5px] border-l-[2.5px] rounded-bl-lg",
-                  p === "br" && "bottom-0 right-0 border-b-[2.5px] border-r-[2.5px] rounded-br-lg",
+                <div key={p} className={cn("absolute size-6 border-white/70",
+                  p === "tl" && "top-0 left-0 border-t-[3px] border-l-[3px] rounded-tl-lg",
+                  p === "tr" && "top-0 right-0 border-t-[3px] border-r-[3px] rounded-tr-lg",
+                  p === "bl" && "bottom-0 left-0 border-b-[3px] border-l-[3px] rounded-bl-lg",
+                  p === "br" && "bottom-0 right-0 border-b-[3px] border-r-[3px] rounded-br-lg",
                 )} />
               ))}
             </div>
           </div>
         )}
 
-        {/* Status badges */}
         {camActive && (
-          <div className="absolute top-3 left-3 flex items-center gap-1.5 rounded-full bg-black/60 backdrop-blur-sm px-2.5 py-1">
-            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[10px] font-semibold text-white">LIVE</span>
+          <div className="absolute top-4 left-4 flex items-center gap-2 rounded-md bg-black/60 backdrop-blur-md px-3 py-1.5 shadow-sm">
+            <span className="size-2 rounded-full bg-primary animate-pulse" />
+            <span className="text-xs font-semibold text-white tracking-widest uppercase">Live</span>
           </div>
         )}
 
         {countdown !== null && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex size-20 items-center justify-center rounded-2xl bg-black/70 backdrop-blur-sm ring-2 ring-white/20">
-              <span className="text-5xl font-black text-white tabular-nums">{countdown}</span>
+            <div className="flex size-24 items-center justify-center rounded-full bg-black/60 backdrop-blur-md shadow-2xl">
+              <span className="text-5xl font-bold text-white tabular-nums">{countdown}</span>
             </div>
           </div>
         )}
 
         {scanning && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 backdrop-blur-sm">
-            <Loader2 className="size-8 text-white animate-spin" />
-            <p className="text-sm font-semibold text-white/90">Analysing face…</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/70 backdrop-blur-sm">
+            <Loader2 className="size-10 text-white animate-spin" />
+            <p className="text-sm font-semibold text-white tracking-wide uppercase">Analyzing Face...</p>
           </div>
         )}
 
-        {/* Result overlay */}
         {result && (
-          <div className="absolute inset-0 bg-card overflow-y-auto">
+          <div className="absolute inset-0 bg-background overflow-y-auto">
             <RecognitionCard result={result} patientId={patientId} onRetry={() => { setResult(null); }} onContinue={onContinueAsUnknown} />
           </div>
         )}
-      </div>
+      </Card>
 
-      {/* Controls */}
-      <div className="pt-3 space-y-2">
+      <div className="space-y-3">
         {camError && (
-          <div className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/8 px-3 py-2 text-xs text-destructive">
-            <AlertCircle className="size-3.5 shrink-0" /> {camError}
+          <div className="flex items-center gap-2 rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+            <AlertCircle className="size-4 shrink-0" /> {camError}
           </div>
         )}
         {!result && (
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             {!camActive ? (
-              <button onClick={startCam}
-                className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-foreground text-background py-3 text-sm font-semibold hover:opacity-80 transition-opacity">
-                <Camera className="size-4" /> Start camera
-              </button>
+              <Button onClick={startCam} className="flex-1 h-12 text-sm font-semibold">
+                <Camera className="size-4 mr-2" /> Turn on camera
+              </Button>
             ) : (
               <>
-                <button onClick={startCountdown} disabled={scanning || countdown !== null}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-foreground text-background py-3 text-sm font-semibold hover:opacity-80 transition-opacity disabled:opacity-40">
-                  {scanning ? <><Loader2 className="size-4 animate-spin" /> Scanning…</>
-                    : countdown !== null ? <><Zap className="size-4" /> {countdown}…</>
-                    : <><ScanFace className="size-4" /> Scan face</>}
-                </button>
-                <button onClick={stopCam} disabled={scanning}
-                  className="flex items-center justify-center rounded-xl border border-border px-4 hover:bg-muted transition-colors disabled:opacity-40">
+                <Button onClick={startCountdown} disabled={scanning || countdown !== null} className="flex-1 h-12 text-sm font-semibold">
+                  {scanning ? <><Loader2 className="size-4 animate-spin mr-2" /> Scanning...</>
+                    : countdown !== null ? <><Zap className="size-4 mr-2" /> {countdown}...</>
+                    : <><ScanFace className="size-4 mr-2" /> Scan Face</>}
+                </Button>
+                <Button onClick={stopCam} disabled={scanning} variant="outline" size="icon" className="h-12 w-12">
                   <CameraOff className="size-4" />
-                </button>
+                </Button>
               </>
             )}
           </div>
@@ -667,76 +619,65 @@ function TranscriptionPanel({
   }, [transcripts]);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Summary */}
-      <div className={cn(
-        "rounded-2xl border bg-card overflow-hidden mb-3 transition-all",
-        isRecording ? "border-emerald-500/40 ring-2 ring-emerald-500/15" : "border-border",
-      )}>
-        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-          <Brain className="size-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Live summary</span>
+    <div className="flex flex-col h-full space-y-4">
+      <div className={cn("rounded-xl overflow-hidden transition-all shadow-sm bg-card ring-1 ring-foreground/10", isRecording ? "border-primary ring-1 ring-primary/20" : "")}>
+        <div className="p-4 pb-3 flex flex-row items-center justify-between border-b border-border/50">
+          <div className="flex items-center gap-2 mb-0">
+            <Brain className="size-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold tracking-tight m-0">Live Summary</h3>
+          </div>
           {isRecording && (
-            <span className="ml-auto flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600">
-              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Processing
-            </span>
+            <div className="flex items-center gap-2 mb-0">
+               <span className="size-2 rounded-full bg-primary animate-pulse" />
+               <span className="text-xs font-semibold text-primary">Processing</span>
+            </div>
           )}
         </div>
         <div className="p-4 min-h-[80px]">
           {summary ? (
-            <div className="text-sm text-foreground leading-relaxed whitespace-pre-line">{summary}</div>
+            <div className="text-sm leading-relaxed text-foreground whitespace-pre-line">{summary}</div>
           ) : (
             <p className="text-sm text-muted-foreground italic">
-              {isRecording ? "Listening and summarising…" : "Start recording to get an AI summary."}
+              {isRecording ? "Listening and generating summary..." : "Start recording to get an AI summary."}
             </p>
           )}
         </div>
       </div>
 
-      {/* Transcript scroll area */}
-      <div className="flex-1 rounded-2xl border border-border bg-card overflow-hidden flex flex-col">
-        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-2">
+      <div className="flex-1 flex flex-col overflow-hidden shadow-sm bg-card ring-1 ring-foreground/10 rounded-xl">
+        <div className="px-4 py-3 border-b border-border/50 flex flex-row items-center justify-between">
+          <div className="flex items-center gap-2 m-0 mt-0">
             <MessageSquare className="size-4 text-muted-foreground" />
-            <span className="text-sm font-semibold">Live transcript</span>
+            <h3 className="text-sm font-semibold tracking-tight m-0">Live Transcript</h3>
           </div>
-          <div className="flex items-center gap-2">
-            {/* Spinner shown briefly while auto-start is initialising */}
+          <div className="flex items-center gap-3 m-0 mt-0">
             {autoStart && !isRecording && !error && (
-              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Loader2 className="size-3 animate-spin" /> Starting…
+              <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" /> Starting...
               </span>
             )}
-            <button
+            <Button
+              size="sm"
+              variant={isRecording ? "destructive" : "default"}
               onClick={isRecording ? stopRecording : () => startRecording()}
-              className={cn(
-                "flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all",
-                isRecording
-                  ? "bg-rose-500 text-white hover:bg-rose-600"
-                  : "bg-foreground text-background hover:opacity-80",
-              )}
+              className="h-8 text-xs px-3 cursor-pointer"
             >
-              {isRecording
-                ? <><Square className="size-3" fill="currentColor" /> Stop</>
-                : <><Mic className="size-3" fill="currentColor" /> Start</>
-              }
-            </button>
+              {isRecording ? <><Square className="size-3 mr-2" fill="currentColor" /> Stop</> : <><Mic className="size-3 mr-2" fill="currentColor" /> Start</>}
+            </Button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-[120px]">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[120px]">
           {transcripts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-2 py-6 text-center">
+            <div className="flex flex-col items-center justify-center h-full gap-3 py-8 text-center">
               <Activity className="size-8 text-muted-foreground/30" />
-              <p className="text-xs text-muted-foreground">
-                {isRecording ? "Listening…" : "Press Start to begin transcription."}
+              <p className="text-sm text-muted-foreground">
+                {isRecording ? "Listening..." : "Press Start to begin transcription."}
               </p>
             </div>
           ) : (
             transcripts.map((line) => (
-              <div key={line.id}
-                className="text-sm text-foreground leading-relaxed border-l-2 border-foreground/20 pl-3 py-0.5 animate-in fade-in slide-in-from-bottom-1 duration-200">
+              <div key={line.id} className="text-sm leading-relaxed border-l-2 border-primary/30 pl-3 py-1">
                 {line.text}
               </div>
             ))
@@ -745,9 +686,9 @@ function TranscriptionPanel({
         </div>
 
         {error && (
-          <div className="px-4 pb-3">
-            <div className="flex items-center gap-2 rounded-xl bg-destructive/8 border border-destructive/20 px-3 py-2 text-xs text-destructive">
-              <AlertCircle className="size-3.5 shrink-0" /> {error}
+          <div className="p-4 pt-0">
+            <div className="flex items-center gap-2 rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
+              <AlertCircle className="size-4 shrink-0" /> {error}
             </div>
           </div>
         )}
@@ -768,20 +709,16 @@ export default function PatientModePage() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
-  // Initial Voice Greeting
   useEffect(() => {
     if ("speechSynthesis" in window) {
       const msg = new SpeechSynthesisUtterance("First, perform face verification to start the conversation.");
       msg.rate = 0.9;
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(msg);
-      return () => {
-        window.speechSynthesis.cancel();
-      };
+      return () => window.speechSynthesis.cancel();
     }
   }, []);
 
-  // Real-time location tracking
   useEffect(() => {
     if (!session?.patientId) return;
     const watchId = navigator.geolocation.watchPosition(
@@ -792,10 +729,10 @@ export default function PatientModePage() {
           longitude: position.coords.longitude
         });
       },
-      (error) => { console.error("Location tracking error: ", error); },
+      (error) => console.error("Location tracking error: ", error),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
-    return () => { navigator.geolocation.clearWatch(watchId); };
+    return () => navigator.geolocation.clearWatch(watchId);
   }, [session?.patientId, recordLocation]);
 
   if (!session) return null;
@@ -814,23 +751,23 @@ export default function PatientModePage() {
   }, []);
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col bg-background text-foreground">
       {/* ── Top greeting bar ── */}
-      <div className="px-6 py-4 border-b border-border bg-card/50 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-foreground text-background">
-            <Brain className="size-5" />
+      <header className="px-8 py-5 border-b border-border bg-card shrink-0 shadow-sm flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex size-12 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+            <Brain className="size-6" />
           </div>
           <div>
-            <p className="text-xs text-muted-foreground font-medium">{greeting}</p>
-            <h1 className="text-lg font-bold leading-tight">{session.patientName}</h1>
-          </div>
-          <div className="ml-auto flex items-center gap-1.5">
-            <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-semibold text-emerald-600">Active</span>
+            <p className="text-sm text-muted-foreground font-medium mb-0.5">{greeting}</p>
+            <h1 className="text-2xl font-bold tracking-tight leading-none">{session.patientName}</h1>
           </div>
         </div>
-      </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-secondary border border-border shadow-sm">
+          <span className="size-2 rounded-full bg-primary animate-pulse" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-secondary-foreground">System Active</span>
+        </div>
+      </header>
 
       {/* ── Visitor notification overlay ── */}
       {visitorNotification && (
@@ -843,24 +780,24 @@ export default function PatientModePage() {
       )}
 
       {/* ── Main split layout ── */}
-      <div className="flex-1 overflow-hidden">
-        <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-0 lg:gap-0 divide-y lg:divide-y-0 lg:divide-x divide-border">
+      <div className="flex-1 overflow-hidden p-6 lg:p-8">
+        <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-8">
 
           {/* ── LEFT: Conversation panel ── */}
-          <div className="flex flex-col overflow-hidden p-5 gap-4">
-            <div className="flex items-center gap-2 shrink-0">
-              <MessageSquare className="size-4 text-muted-foreground" />
-              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Conversation</h2>
+          <section className="flex flex-col overflow-hidden gap-5 bg-card border border-border rounded-xl shadow-sm p-6">
+            <div className="flex items-center gap-2 shrink-0 border-b border-border pb-4">
+              <MessageSquare className="size-5 text-primary" />
+              <h2 className="text-lg font-bold tracking-tight">Active Conversation</h2>
             </div>
 
             {recognisedPersonId || allowUnknownConversation ? (
-              <>
+              <div className="flex-1 min-h-0 flex flex-col gap-6 overflow-y-auto pr-2">
                 {recognisedPersonId && (
                   <div className="shrink-0">
                     <PersonHistoryPanel personId={recognisedPersonId} personName={recognisedPersonName} />
                   </div>
                 )}
-                <div className="flex-1 min-h-0">
+                <div className="flex-1 min-h-0 flex flex-col">
                   <TranscriptionPanel
                     patientId={session.patientId}
                     patientName={session.patientName}
@@ -868,25 +805,25 @@ export default function PatientModePage() {
                     autoStart={true}
                   />
                 </div>
-              </>
+              </div>
             ) : (
-              <div className="flex flex-col items-center justify-center flex-1 gap-3 text-center py-10">
-                <div className="flex size-14 items-center justify-center rounded-2xl bg-muted">
-                  <MessageSquare className="size-7 text-muted-foreground/50" />
+              <div className="flex flex-col items-center justify-center flex-1 gap-4 text-center py-10">
+                <div className="flex size-16 items-center justify-center rounded-full bg-muted border border-border shadow-sm">
+                  <MessageSquare className="size-8 text-muted-foreground/50" />
                 </div>
                 <div>
-                  <p className="font-semibold">Awaiting Recognition</p>
-                  <p className="text-sm text-muted-foreground mt-1">Scan a face on the right to start recording the conversation.</p>
+                  <p className="text-lg font-semibold tracking-tight">Awaiting Recognition</p>
+                  <p className="text-sm text-muted-foreground mt-2 max-w-[250px] mx-auto">Scan a face on the right to start recording the conversation context.</p>
                 </div>
               </div>
             )}
-          </div>
+          </section>
 
           {/* ── RIGHT: Face recognition camera ── */}
-          <div className="flex flex-col p-5 gap-4 overflow-hidden">
-            <div className="flex items-center gap-2 shrink-0">
-              <ScanFace className="size-4 text-muted-foreground" />
-              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Face recognition</h2>
+          <section className="flex flex-col overflow-hidden gap-5 bg-card border border-border rounded-xl shadow-sm p-6">
+            <div className="flex items-center gap-2 shrink-0 border-b border-border pb-4">
+              <ScanFace className="size-5 text-primary" />
+              <h2 className="text-lg font-bold tracking-tight">Identity Verification</h2>
             </div>
             <div className="flex-1 min-h-0">
               <CameraPanel
@@ -895,7 +832,8 @@ export default function PatientModePage() {
                 onContinueAsUnknown={handleContinueAsUnknown}
               />
             </div>
-          </div>
+          </section>
+
         </div>
       </div>
     </div>

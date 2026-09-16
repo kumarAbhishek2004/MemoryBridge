@@ -1,8 +1,8 @@
 import { useEffect, useMemo } from "react";
-import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap, Circle } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { useGetLocationsQuery } from "@/services/patientApi";
+import { useGetLocationsQuery, useGetPatientQuery } from "@/services/patientApi";
 import { MapPin, Navigation, ShieldCheck } from "lucide-react";
 import type { TrackingLocation } from "@/types";
 
@@ -42,20 +42,27 @@ export function PatientTrackingMap({ patientId }: { patientId: number }) {
   const { data: locations = [], isLoading } = useGetLocationsQuery(patientId, {
     pollingInterval: 5000, 
   });
+  
+  const { data: patientResp } = useGetPatientQuery(patientId);
+  const patient = patientResp?.data;
 
-  // Calculate distances and identify if patient has breached 50m radius from start
-  const { isExceedingRadius, speed, endLocation, startLocation } = useMemo(() => {
-    if (locations.length === 0) return { isExceedingRadius: false, speed: 0, endLocation: null, startLocation: null };
+  const homeLat = patient?.home_latitude ? parseFloat(patient.home_latitude) : null;
+  const homeLng = patient?.home_longitude ? parseFloat(patient.home_longitude) : null;
+  const safeRadius = patient?.safe_radius_meters ?? 100;
+
+  // Calculate distances and identify if patient has breached the safe radius
+  const { isExceedingRadius, speed, endLocation, startLocation, currentDistFromHome } = useMemo(() => {
+    if (locations.length === 0) return { isExceedingRadius: false, speed: 0, endLocation: null, startLocation: null, currentDistFromHome: 0 };
     
-    // We treat the very first ping as "Home" for this journey
-    const startLoc = locations[0];
+    // We treat the very first ping as "Start" if home is not set
+    const startLoc = {
+      latitude: homeLat ?? locations[0].latitude,
+      longitude: homeLng ?? locations[0].longitude,
+    };
+    
     const latestLoc = locations[locations.length - 1];
 
-    let maxDist = 0;
-    for (const loc of locations) {
-      const dist = getDistanceMeters(startLoc.latitude, startLoc.longitude, loc.latitude, loc.longitude);
-      if (dist > maxDist) maxDist = dist;
-    }
+    const currentDist = getDistanceMeters(startLoc.latitude, startLoc.longitude, latestLoc.latitude, latestLoc.longitude);
 
     // Attempt to calculate speed from last two points
     let currentSpeed = 0;
@@ -69,12 +76,13 @@ export function PatientTrackingMap({ patientId }: { patientId: number }) {
     }
 
     return { 
-      isExceedingRadius: maxDist > 50, 
+      isExceedingRadius: currentDist > safeRadius, 
       speed: currentSpeed,
       endLocation: latestLoc,
-      startLocation: startLoc
+      startLocation: startLoc,
+      currentDistFromHome: currentDist,
     };
-  }, [locations]);
+  }, [locations, homeLat, homeLng, safeRadius]);
 
   if (isLoading) {
     return <div className="animate-pulse h-[400px] w-full bg-muted rounded-xl mt-6"></div>;
@@ -87,21 +95,6 @@ export function PatientTrackingMap({ patientId }: { patientId: number }) {
         <p className="font-medium">No tracking history</p>
         <p className="text-sm text-muted-foreground mt-1">
           Tracking data has not been sent for this patient yet.
-        </p>
-      </div>
-    );
-  }
-
-  if (!isExceedingRadius) {
-    return (
-      <div className="mt-6 flex flex-col items-center justify-center p-10 rounded-xl border border-emerald-500/30 bg-emerald-500/5 text-center">
-        <div className="flex size-14 items-center justify-center rounded-full bg-emerald-500/20 mb-4">
-          <ShieldCheck className="size-7 text-emerald-600" />
-        </div>
-        <p className="text-lg font-bold text-emerald-700">Patient is Safe at Home</p>
-        <p className="text-sm text-muted-foreground mt-2 max-w-md">
-          The patient is currently within the safe radius (50 meters) of their starting location. 
-          Live location plotting will automatically start if they travel beyond this radius.
         </p>
       </div>
     );
@@ -121,25 +114,40 @@ export function PatientTrackingMap({ patientId }: { patientId: number }) {
           <p className="text-xl font-semibold">{speed.toFixed(1)}</p>
           <p className="text-xs text-muted-foreground mt-0.5">Current Speed (m/s)</p>
         </div>
-        <div className="rounded-lg border border-border bg-card px-4 py-3">
-          <p className="text-xl font-semibold text-amber-600">Travelling</p>
-          <p className="text-xs text-muted-foreground mt-0.5 flex items-center">
-            <span className="size-2 rounded-full mr-2 bg-amber-500 animate-pulse"></span>
-            Beyond 50m radius
-          </p>
-        </div>
+        {isExceedingRadius ? (
+          <div className="rounded-lg border border-border bg-card px-4 py-3">
+            <p className="text-xl font-semibold text-amber-600">Travelling</p>
+            <p className="text-xs text-muted-foreground mt-0.5 flex items-center">
+              <span className="size-2 rounded-full mr-2 bg-amber-500 animate-pulse"></span>
+              Beyond {safeRadius}m safe zone
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+            <p className="text-xl font-semibold text-emerald-700">Safe at Home</p>
+            <p className="text-xs text-emerald-600/80 mt-0.5 flex items-center">
+              <span className="size-2 rounded-full mr-2 bg-emerald-500"></span>
+              Within {safeRadius}m radius
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Map Container */}
-      <div className="h-[400px] w-full rounded-xl overflow-hidden border border-border shadow-sm">
+      <div className="h-[400px] w-full rounded-xl overflow-hidden border border-border shadow-sm relative z-0">
         <MapContainer center={[startLocation.latitude, startLocation.longitude]} zoom={15} style={{ height: "100%", width: "100%" }}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          <Circle 
+            center={[startLocation.latitude, startLocation.longitude]}
+            radius={safeRadius}
+            pathOptions={{ color: '#10b981', fillColor: '#10b981', fillOpacity: 0.1, weight: 2, dashArray: "4, 6" }}
+          />
           <Polyline positions={coordinates} pathOptions={{ color: "#2563eb", weight: 4 }} />
           <Marker position={[startLocation.latitude, startLocation.longitude]}>
-            <Popup>Home / Start Point</Popup>
+            <Popup>Home Location (Safe Zone: {safeRadius}m)</Popup>
           </Marker>
           <Marker position={[endLocation.latitude, endLocation.longitude]}>
             <Popup>

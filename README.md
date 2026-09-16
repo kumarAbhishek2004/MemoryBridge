@@ -349,6 +349,25 @@ Move into project:
 cd MemoryBridge
 ```
 
+## Running the Backend (Server)
+
+We use `uv` and `fastapi-cli` for the Python backend.
+
+```bash
+cd server
+uv run uvicorn main:application --reload --host 127.0.0.1 --port 8000
+```
+
+## Running the Frontend (Client)
+
+The frontend is a React application built with Vite and `pnpm`.
+
+```bash
+cd client
+pnpm install
+pnpm dev
+```
+
 ---
 
 # Git Workflow

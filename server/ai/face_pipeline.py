@@ -24,7 +24,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # MTCNN: detects faces and returns aligned 160×160 crops ready for FaceNet
 _detector = MTCNN(
     image_size=160,
-    margin=20,
+    margin=0,               # Tightly crop face; ignore clothing and background
     keep_all=True,          # return ALL faces in the image, not just the best one
     device=DEVICE,
     post_process=True,      # normalise pixel values for FaceNet
@@ -36,14 +36,22 @@ _embedder = InceptionResnetV1(pretrained="vggface2").eval().to(DEVICE)
 
 # ── public helpers ─────────────────────────────────────────────────────────────
 
-def decode_image(image_bytes: bytes) -> np.ndarray:
+def decode_image(image_bytes: bytes, max_size: int = 800) -> np.ndarray:
     """
-    Convert raw image bytes (from an HTTP upload) into an OpenCV BGR array.
+    Convert raw image bytes (from an HTTP upload) into an OpenCV BGR array,
+    and downscale it if it's too large to speed up MTCNN detection.
     """
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError("Could not decode image — make sure it is a valid JPEG/PNG.")
+    
+    # Downscale for performance if image is huge
+    h, w = img.shape[:2]
+    if max(h, w) > max_size:
+        scale = max_size / max(h, w)
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        
     return img
 
 

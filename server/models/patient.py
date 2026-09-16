@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, func
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, func
 from sqlalchemy.orm import relationship
 from server.config.db import Base
 
@@ -27,6 +27,12 @@ class Patient(Base):
     age = Column(Integer, nullable=True)
 
     diagnosis_level = Column(String, nullable=True)
+
+    home_latitude = Column(String, nullable=True)
+    home_longitude = Column(String, nullable=True)
+    safe_radius_meters = Column(Integer, nullable=True, default=100)
+
+    show_history_on_moderate = Column(Boolean, nullable=False, default=False)
 
     created_at = Column(DateTime, server_default=func.now())
 

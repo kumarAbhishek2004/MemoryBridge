@@ -83,6 +83,14 @@ export const recognitionApi = api.injectEndpoints({
         { type: "Person", id: `LIST-${patientId}` },
       ],
     }),
+
+    // ── GET /recognition/job-status/{person_id} ──────────────────────────────
+    getFaceJobStatus: builder.query<
+      { success: boolean; message: string; data: { status: string; error?: string } },
+      number
+    >({
+      query: (personId) => `/recognition/job-status/${personId}`,
+    }),
   }),
   overrideExisting: false,
 });
@@ -93,4 +101,7 @@ export const {
   useGetKnownPersonsQuery,
   useStoreUnknownFaceMutation,
   useSuggestIdentityMutation,
+  useGetFaceJobStatusQuery,
+  useLazyGetFaceJobStatusQuery,
 } = recognitionApi;
+

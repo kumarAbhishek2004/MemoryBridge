@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Plus, User2, ChevronRight, Loader2, Trash2,
-  AlertCircle, Brain, Calendar, Activity,
+  AlertCircle, Brain, Calendar, Activity, MapPin, Crosshair
 } from "lucide-react";
 import {
   useGetPatientsQuery,
@@ -23,6 +23,10 @@ const createPatientSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   age: z.number().min(0).max(120).optional(),
   diagnosis_level: z.enum(["mild", "moderate", "severe"]).optional().or(z.literal("")),
+  home_latitude: z.string().optional(),
+  home_longitude: z.string().optional(),
+  safe_radius_meters: z.number().min(10).optional().default(100),
+  show_history_on_moderate: z.boolean().optional().default(false),
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -48,15 +52,41 @@ function DiagnosisBadge({ level }: { level: string | null }) {
 function AddPatientModal({ onClose }: { onClose: () => void }) {
   const [createPatient, { isLoading }] = useCreatePatientMutation();
   const {
-    register, handleSubmit,
+    register, handleSubmit, setValue, watch,
     formState: { errors },
   } = useForm<any>({ resolver: zodResolver(createPatientSchema) });
+
+  const selectedDiagnosis = watch("diagnosis_level");
+
+  const [locLoading, setLocLoading] = useState(false);
+  const [locError, setLocError] = useState("");
+
+  const handleGetLocation = () => {
+    setLocLoading(true);
+    setLocError("");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setValue("home_latitude", pos.coords.latitude.toString());
+        setValue("home_longitude", pos.coords.longitude.toString());
+        setLocLoading(false);
+      },
+      (err) => {
+        setLocError("Could not get location");
+        setLocLoading(false);
+      },
+      { enableHighAccuracy: true }
+    );
+  };
 
   const onSubmit: SubmitHandler<any> = async (data) => {
     await createPatient({
       name: data.name,
       age: data.age as number | undefined,
       diagnosis_level: (data.diagnosis_level === "" ? undefined : data.diagnosis_level) as any,
+      home_latitude: data.home_latitude,
+      home_longitude: data.home_longitude,
+      safe_radius_meters: data.safe_radius_meters as number | undefined,
+      show_history_on_moderate: data.show_history_on_moderate,
     }).unwrap();
     onClose();
   };
@@ -69,14 +99,14 @@ function AddPatientModal({ onClose }: { onClose: () => void }) {
         onClick={onClose}
       />
       {/* Panel */}
-      <div className="relative z-10 w-full max-w-md rounded-xl border border-border bg-card shadow-2xl">
-        <div className="border-b border-border px-6 py-4">
+      <div className="relative z-10 w-full max-w-md rounded-xl border border-border bg-card shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="border-b border-border px-6 py-4 sticky top-0 bg-card z-10">
           <h2 className="text-base font-semibold">Add new patient</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
             Create a new dementia patient profile.
           </p>
         </div>
-        <form onSubmit={handleSubmit(onSubmit)} className="px-6 py-4 space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="px-6 py-4 space-y-5">
           <FormField label="Full name" error={errors.name?.message as string} htmlFor="p-name" required>
             <Input id="p-name" placeholder="Ramesh Kumar" {...register("name")} />
           </FormField>
@@ -99,7 +129,54 @@ function AddPatientModal({ onClose }: { onClose: () => void }) {
             </FormField>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          {selectedDiagnosis === "moderate" && (
+            <div className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-border p-4 shadow-sm bg-card">
+              <div className="mt-1">
+                <input
+                  type="checkbox"
+                  id="p-history-moderate"
+                  className="size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-600"
+                  {...register("show_history_on_moderate")}
+                />
+              </div>
+              <div className="space-y-1 leading-none">
+                <label htmlFor="p-history-moderate" className="text-sm font-medium">
+                  Show Conversation History to Patient
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Caregiver override: Display past conversation history and summaries to the patient in Patient Mode (Medium severity).
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3 pt-2 border-t border-border">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-semibold flex items-center gap-2">
+                <MapPin className="size-4 text-muted-foreground" />
+                Home Location (Geofence)
+              </label>
+              <Button type="button" variant="outline" size="sm" onClick={handleGetLocation} disabled={locLoading} className="h-7 text-xs px-2">
+                {locLoading ? <Loader2 className="size-3 animate-spin mr-1.5" /> : <Crosshair className="size-3 mr-1.5" />}
+                Use Current
+              </Button>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Latitude" error={errors.home_latitude?.message as string} htmlFor="p-lat">
+                <Input id="p-lat" placeholder="28.7041" {...register("home_latitude")} />
+              </FormField>
+              <FormField label="Longitude" error={errors.home_longitude?.message as string} htmlFor="p-lng">
+                <Input id="p-lng" placeholder="77.1025" {...register("home_longitude")} />
+              </FormField>
+            </div>
+            <FormField label="Safe Radius (meters)" error={errors.safe_radius_meters?.message as string} htmlFor="p-rad">
+              <Input id="p-rad" type="number" placeholder="100" defaultValue={100} {...register("safe_radius_meters", { valueAsNumber: true })} />
+            </FormField>
+            {locError && <p className="text-xs text-destructive">{locError}</p>}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-border">
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>
               Cancel
             </Button>

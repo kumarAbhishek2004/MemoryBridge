@@ -6,6 +6,10 @@ export interface Patient {
   name: string;
   age: number | null;
   diagnosis_level: "mild" | "moderate" | "severe" | null;
+  home_latitude: string | null;
+  home_longitude: string | null;
+  safe_radius_meters: number | null;
+  show_history_on_moderate: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -14,12 +18,20 @@ export interface CreatePatientPayload {
   name: string;
   age?: number;
   diagnosis_level?: "mild" | "moderate" | "severe";
+  home_latitude?: string;
+  home_longitude?: string;
+  safe_radius_meters?: number;
+  show_history_on_moderate?: boolean;
 }
 
 export interface UpdatePatientPayload {
   name?: string;
   age?: number;
   diagnosis_level?: "mild" | "moderate" | "severe";
+  home_latitude?: string;
+  home_longitude?: string;
+  safe_radius_meters?: number;
+  show_history_on_moderate?: boolean;
 }
 
 // ─── Person (known & unknown faces linked to a patient) ───────────────────────

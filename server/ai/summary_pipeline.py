@@ -32,16 +32,28 @@ from datetime import datetime
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from server.config.env import GEMINI_API_KEY
+from langchain_groq import ChatGroq
+from server.config.env import GEMINI_API_KEY, GROQ_API_KEY
 
 logger = logging.getLogger(__name__)
 
 # ── LLM (shared, thread-safe) ─────────────────────────────────────────────────
-_llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
+# Primary model: Gemini 3.6 Flash
+_gemini_llm = ChatGoogleGenerativeAI(
+    model="gemini-3.6-flash",
     temperature=0.2,               # low temperature → consistent, factual output
     google_api_key=GEMINI_API_KEY,
 )
+
+# Fallback model: Groq OSS
+_groq_llm = ChatGroq(
+    model="llama-3.1-8b-instant",
+    temperature=0.2,
+    api_key=GROQ_API_KEY,
+)
+
+# Chain with fallback
+_llm = _gemini_llm.with_fallbacks([_groq_llm])
 
 # ── System prompt ──────────────────────────────────────────────────────────────
 _SYSTEM_PROMPT = """You are an AI assistant helping Alzheimer's caregivers.
@@ -122,7 +134,8 @@ async def update_summary(conversation_id: int, new_sentence: str) -> str:
     """
     state = _sessions.get(conversation_id)
     if state is None:
-        raise KeyError(f"No summary session for conversation_id={conversation_id}")
+        logger.warning(f"No summary session in memory for conv {conversation_id}. Re-creating an empty one.")
+        state = create_session(conversation_id, "Patient") # Fallback name
 
     state.add_sentence(new_sentence)
 
@@ -141,7 +154,16 @@ async def update_summary(conversation_id: int, new_sentence: str) -> str:
     try:
         logger.info("Calling Gemini for summary update (conv %d, %d sentences)", conversation_id, len(state.sentences))
         response = await _llm.ainvoke(messages)
-        summary_text: str = response.content.strip()
+        
+        # Handle case where response.content is a list (e.g. multi-modal or newer Langchain versions)
+        if isinstance(response.content, list):
+            summary_text = "".join(
+                str(part.get("text", "")) if isinstance(part, dict) else str(part)
+                for part in response.content
+            ).strip()
+        else:
+            summary_text = str(response.content).strip()
+            
         logger.info("Gemini summary update successful for conv %d", conversation_id)
     except Exception as exc:
         logger.error("LLM summarisation failed for conversation %d: %s", conversation_id, exc)

@@ -18,12 +18,20 @@ class CreatePatientRequest(BaseModel):
         example="moderate",
         description="mild | moderate | severe"
     )
+    home_latitude: Optional[str] = Field(None, example="28.7041")
+    home_longitude: Optional[str] = Field(None, example="77.1025")
+    safe_radius_meters: Optional[int] = Field(100, example=100)
+    show_history_on_moderate: Optional[bool] = Field(False)
 
 
 class UpdatePatientRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=2, max_length=100)
     age: Optional[int] = Field(None, ge=0, le=120)
     diagnosis_level: Optional[str] = Field(None, example="severe")
+    home_latitude: Optional[str] = None
+    home_longitude: Optional[str] = None
+    safe_radius_meters: Optional[int] = None
+    show_history_on_moderate: Optional[bool] = None
 
 
 class PatientResponse(BaseModel):
@@ -32,6 +40,10 @@ class PatientResponse(BaseModel):
     name: str
     age: Optional[int]
     diagnosis_level: Optional[str]
+    home_latitude: Optional[str] = None
+    home_longitude: Optional[str] = None
+    safe_radius_meters: Optional[int] = None
+    show_history_on_moderate: bool
     created_at: datetime
     updated_at: datetime
 

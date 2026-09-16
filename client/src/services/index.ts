@@ -18,7 +18,11 @@ export {
 export {
   recognitionApi,
   useStoreKnownFaceMutation, useMatchFaceMutation,
-  useGetKnownPersonsQuery, useStoreUnknownFaceMutation, useSuggestIdentityMutation,
+  useGetKnownPersonsQuery,
+  useStoreUnknownFaceMutation,
+  useSuggestIdentityMutation,
+  useGetFaceJobStatusQuery,
+  useLazyGetFaceJobStatusQuery,
 } from "./recognitionApi";
 
 export {

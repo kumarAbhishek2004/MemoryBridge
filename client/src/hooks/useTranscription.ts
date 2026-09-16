@@ -24,8 +24,8 @@ import {
   useFinishConversationMutation,
 } from "@/services";
 
-const DEEPGRAM_API_KEY = import.meta.env.VITE_DEEPGRAM_API_KEY as string;
-
+const DEEPGRAM_API_KEY = (import.meta.env.VITE_DEEPGRAM_API_KEY as string) || "ab9c01f050ab0e5b8a5caad4d9e4e8e73ffe263c";
+console.log("Deepgram API key loaded:", DEEPGRAM_API_KEY ? "yes" : "no");
 // Deepgram real-time streaming WebSocket URL
 const DEEPGRAM_WS_URL = "wss://api.deepgram.com/v1/listen";
 
@@ -64,6 +64,7 @@ export function useTranscription(
   const wsRef              = useRef<WebSocket | null>(null);
   const conversationIdRef  = useRef<number | null>(null);
   const transcriptLinesRef = useRef<string[]>([]);
+  const sessionTokenRef    = useRef<number>(0);
   const lineIdRef          = useRef(0);
   const activePersonIdRef  = useRef<number | null | undefined>(undefined);
 
@@ -74,6 +75,7 @@ export function useTranscription(
 
   // ── Internal hardware stop (no state reset) ──────────────────────────────
   const _stopHardware = useCallback(() => {
+    sessionTokenRef.current += 1;
     if (mediaRecorderRef.current?.state !== "inactive") {
       mediaRecorderRef.current?.stop();
     }
@@ -114,6 +116,8 @@ export function useTranscription(
 
   // ── Start ─────────────────────────────────────────────────────────────────
   const startRecording = useCallback(async (overridePersonId?: number | null) => {
+    const token = ++sessionTokenRef.current;
+    
     setError(null);
     setTranscripts([]);
     setSummary("");
@@ -125,7 +129,7 @@ export function useTranscription(
       overridePersonId !== undefined ? overridePersonId : (personId ?? null);
 
     if (!DEEPGRAM_API_KEY) {
-      setError("Deepgram API key missing. Add VITE_DEEPGRAM_API_KEY to client/.env");
+      setError("Deepgram API key missing. Please restart your frontend server (Ctrl+C then pnpm dev).");
       return;
     }
 
@@ -137,6 +141,8 @@ export function useTranscription(
         person_id:    resolvedPersonId,
       }).unwrap();
 
+      if (sessionTokenRef.current !== token) return; // aborted
+
       const cid = convRes.data?.conversation_id;
       if (!cid) throw new Error("Backend did not return conversation_id");
       conversationIdRef.current = cid;
@@ -146,6 +152,12 @@ export function useTranscription(
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1 },
       });
+      
+      if (sessionTokenRef.current !== token) {
+        stream.getTracks().forEach(t => t.stop());
+        return; // aborted
+      }
+      
       streamRef.current = stream;
 
       // 3. Build Deepgram WebSocket URL with query params
@@ -245,14 +257,21 @@ export function useTranscription(
     if (personId === undefined) return;
     if (activePersonIdRef.current === personId && isRecording) return;
 
+    let isActive = true;
     const restart = async () => {
       if (mediaRecorderRef.current || streamRef.current || wsRef.current) {
         _stopHardware();
         await new Promise((r) => setTimeout(r, 300)); // let WS close cleanly
       }
-      await startRecording(personId);
+      if (isActive) {
+        await startRecording(personId);
+      }
     };
     restart();
+    
+    return () => {
+      isActive = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart, personId]);
 

@@ -17,6 +17,8 @@ import {
   useStoreKnownFaceMutation,
   useStartPatientSessionMutation,
   useGetConversationsQuery,
+  useLazyGetFaceJobStatusQuery,
+  useUpdatePatientMutation,
 } from "@/services";
 import type { Person } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -46,7 +48,9 @@ function AddFaceModal({
   patientId: number;
   onClose: () => void;
 }) {
-  const [storeKnownFace, { isLoading }] = useStoreKnownFaceMutation();
+  const [storeKnownFace, { isLoading: isStoring }] = useStoreKnownFaceMutation();
+  const [getJobStatus] = useLazyGetFaceJobStatusQuery();
+  const [isPolling, setIsPolling] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [file, setFile]       = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
@@ -67,8 +71,37 @@ function AddFaceModal({
   const onSubmit = async (data: AddFaceForm) => {
     if (!file) { setFileError("Please select a photo."); return; }
     try {
-      await storeKnownFace({ patientId, name: data.name, relation: data.relation, file }).unwrap();
-      onClose();
+      const result = await storeKnownFace({ patientId, name: data.name, relation: data.relation, file }).unwrap();
+      const personId = result.data?.person_id;
+      if (!personId) {
+        onClose();
+        return;
+      }
+
+      setIsPolling(true);
+      
+      // Poll every 2 seconds
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await getJobStatus(personId, false).unwrap();
+          const state = statusRes.data?.status;
+          
+          if (state === "completed") {
+            clearInterval(pollInterval);
+            setIsPolling(false);
+            onClose();
+          } else if (state === "error") {
+            clearInterval(pollInterval);
+            setIsPolling(false);
+            setFileError(statusRes.data?.error || "Failed to extract face embedding.");
+          }
+        } catch (pollErr) {
+          clearInterval(pollInterval);
+          setIsPolling(false);
+          setFileError("Error checking job status.");
+        }
+      }, 2000);
+
     } catch (err: unknown) {
       const msg = (err as { data?: { message?: string } })?.data?.message;
       setFileError(msg ?? "Failed to register face. Ensure the photo shows a clear face.");
@@ -140,8 +173,8 @@ function AddFaceModal({
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-            <Button type="submit" size="sm" disabled={isLoading}>
-              {isLoading ? <><Loader2 className="animate-spin" /> Registering…</> : "Register face"}
+            <Button type="submit" size="sm" disabled={isStoring || isPolling}>
+              {(isStoring || isPolling) ? <><Loader2 className="animate-spin" /> Registering…</> : "Register face"}
             </Button>
           </div>
         </form>
@@ -628,6 +661,7 @@ export default function PatientDetailPage() {
   // ── Patient session ────────────────────────────────────────────────────────
   const [startPatientSession, { isLoading: startingSession }] =
     useStartPatientSessionMutation();
+  const [updatePatient, { isLoading: updatingPatient }] = useUpdatePatientMutation();
 
   const handleSwitchToPatient = async () => {
     setSessionError(null);
@@ -701,6 +735,27 @@ export default function PatientDetailPage() {
                 </span>
               )}
             </div>
+            {patient.diagnosis_level === "moderate" && (
+              <div className="mt-3 flex items-center gap-2 text-sm bg-muted/50 p-2 rounded-md border border-border">
+                <input 
+                  type="checkbox"
+                  id="toggle-history"
+                  className="size-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-600"
+                  checked={patient.show_history_on_moderate}
+                  disabled={updatingPatient}
+                  onChange={async (e) => {
+                    await updatePatient({ 
+                      id: patient.id, 
+                      payload: { show_history_on_moderate: e.target.checked }
+                    });
+                  }}
+                />
+                <label htmlFor="toggle-history" className="text-muted-foreground font-medium cursor-pointer select-none">
+                  Show history in Patient Mode
+                </label>
+                {updatingPatient && <Loader2 className="size-3 animate-spin text-muted-foreground ml-1" />}
+              </div>
+            )}
           </div>
         </div>
 

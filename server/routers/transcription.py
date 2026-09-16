@@ -148,23 +148,34 @@ async def save_transcript_line(
     )
 
 
+from fastapi import BackgroundTasks
+from server.services.transcription_service import _save_summary_to_db, _close_conversation_in_db
+
+def _finalize_conversation_task(conversation_id: int, summary_text: str):
+    try:
+        _save_summary_to_db(conversation_id, summary_text)
+        _close_conversation_in_db(conversation_id)
+    except Exception as e:
+        logger.error(f"Failed to finalize conversation in background: {e}")
+
 @router.post("/finish", response_model=ApiResponse)
 async def finish_conversation(
     body: FinishConversationBody,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     token_data: dict = Depends(verify_token),
 ):
     """
     Called when the client stops recording.
-    Generates a Gemini summary from the full transcript, saves it, closes the
-    conversation, and returns the summary text.
+    Retrieves summary from memory and triggers DB save in the background.
     """
     try:
-        summary = await transcription_service.rest_finish_conversation(
+        summary = transcription_service.rest_finish_conversation(
             conversation_id=body.conversation_id,
             patient_name=body.patient_name,
             full_transcript=body.full_transcript,
         )
+        background_tasks.add_task(_finalize_conversation_task, body.conversation_id, summary)
     except Exception as exc:
         raise ApiError(500, f"Failed to finish conversation: {exc}")
 
@@ -235,13 +246,20 @@ def get_conversations_for_person(
     if not person:
         raise ApiError(404, "Person not found")
 
-    # Access Control: If patient is in 'severe' case, they cannot see previous history
+    # Access Control for past conversations in patient mode
     patient = person.patient
-    is_severe = (patient.diagnosis_level or "").lower() == "severe"
+    level = (patient.diagnosis_level or "mild").lower()
+    
+    if level == "mild":
+        history_restricted = False
+    elif level == "moderate":
+        history_restricted = not patient.show_history_on_moderate
+    else: # severe or any other
+        history_restricted = True
 
-    if is_severe:
+    if history_restricted:
         conversations = []
-        message = f"History restricted for {person.name or 'this person'} (Severe Case Privacy)"
+        message = f"History restricted for {person.name or 'this person'} ({level.title()} Case Privacy)"
     else:
         conversations = (
             db.query(Conversation)
@@ -262,7 +280,7 @@ def get_conversations_for_person(
                 "is_known": person.is_known,
             },
             "conversations": [_serialise_conversation(c) for c in conversations],
-            "history_restricted": is_severe
+            "history_restricted": history_restricted
         },
     )
 

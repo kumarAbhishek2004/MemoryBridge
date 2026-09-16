@@ -322,32 +322,25 @@ def rest_create_conversation(patient_id: int, patient_name: str, person_id: int 
     return cid
 
 
-async def rest_finish_conversation(
+def rest_finish_conversation(
     conversation_id: int,
     patient_name:    str,
     full_transcript: str,
 ) -> str:
     """
-    Called when the client finishes recording.
-    Generates a final Gemini summary from the full transcript text,
-    saves it to DB, closes the conversation, and returns the summary.
+    Retrieves the final Gemini summary and closes the memory session.
+    DB operations should be run in a background task by the caller.
     """
     from server.ai.summary_pipeline import (
         close_session   as _close,
         get_session,
     )
     
-    # If the session does not exist (perhaps missed start), we could re-create it,
-    # but normally it was created in rest_create_conversation.
     summary_text = ""
     sess = get_session(conversation_id)
     if sess:
         summary_text = sess.current_summary
         _close(conversation_id)
-
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, _save_summary_to_db, conversation_id, summary_text)
-    await loop.run_in_executor(None, _close_conversation_in_db, conversation_id)
 
     return summary_text
 

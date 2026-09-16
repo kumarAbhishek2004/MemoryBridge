@@ -16,6 +16,9 @@ DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
 # Gemini (used by LangChain for summarisation)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
+# Groq (used as fallback for summarisation)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+
 # Cloudinary
 CLOUDINARY_CLOUD_NAME  = os.getenv("CLOUDINARY_CLOUD_NAME", "")
 CLOUDINARY_API_KEY     = os.getenv("CLOUDINARY_API_KEY", "")

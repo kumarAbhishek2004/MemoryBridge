@@ -4,7 +4,7 @@ import numpy as np
 from server.models.person import Person, FaceEmbedding
 from server.ai.face_pipeline import extract_embeddings
 
-MATCH_THRESHOLD = 0.75
+MATCH_THRESHOLD = 0.70
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────

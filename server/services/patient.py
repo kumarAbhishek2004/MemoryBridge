@@ -42,6 +42,10 @@ def createPatient(db: Session, payload: CreatePatientRequest, owner_id: int) -> 
         owner_id=owner_id,
         age=payload.age,
         diagnosis_level=payload.diagnosis_level,
+        home_latitude=payload.home_latitude,
+        home_longitude=payload.home_longitude,
+        safe_radius_meters=payload.safe_radius_meters,
+        show_history_on_moderate=payload.show_history_on_moderate or False,
     )
     db.add(patient)
     db.commit()
@@ -74,6 +78,14 @@ def updatePatient(
         patient.age = payload.age
     if payload.diagnosis_level is not None:
         patient.diagnosis_level = payload.diagnosis_level
+    if payload.home_latitude is not None:
+        patient.home_latitude = payload.home_latitude
+    if payload.home_longitude is not None:
+        patient.home_longitude = payload.home_longitude
+    if payload.safe_radius_meters is not None:
+        patient.safe_radius_meters = payload.safe_radius_meters
+    if payload.show_history_on_moderate is not None:
+        patient.show_history_on_moderate = payload.show_history_on_moderate
 
     db.commit()
     db.refresh(patient)
