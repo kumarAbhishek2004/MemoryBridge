@@ -10,13 +10,15 @@ export const recognitionApi = api.injectEndpoints({
     // ── POST /recognition/store_known_face  (multipart/form-data) ───────────
     storeKnownFace: builder.mutation<
       StoreFaceResponse,
-      { patientId: number; name: string; relation: string; file: File }
+      { patientId: number; name: string; relation: string; file: File; is_family?: boolean; family_member_email?: string }
     >({
-      query: ({ patientId, name, relation, file }) => {
+      query: ({ patientId, name, relation, file, is_family, family_member_email }) => {
         const form = new FormData();
         form.append("patient_id", String(patientId));
         form.append("name", name);
         form.append("relation", relation);
+        if (is_family) form.append("is_family", "true");
+        if (family_member_email) form.append("family_member_email", family_member_email);
         form.append("file", file);
         return { url: "/recognition/store_known_face", method: "POST", body: form };
       },

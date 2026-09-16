@@ -322,18 +322,20 @@ def rest_create_conversation(patient_id: int, patient_name: str, person_id: int 
     return cid
 
 
-def rest_finish_conversation(
+async def rest_finish_conversation(
     conversation_id: int,
     patient_name:    str,
     full_transcript: str,
 ) -> str:
     """
     Retrieves the final Gemini summary and closes the memory session.
+    If the summary is empty or missing, generates a new one from full_transcript.
     DB operations should be run in a background task by the caller.
     """
     from server.ai.summary_pipeline import (
-        close_session   as _close,
+        close_session as _close,
         get_session,
+        generate_one_off_summary,
     )
     
     summary_text = ""
@@ -341,6 +343,10 @@ def rest_finish_conversation(
     if sess:
         summary_text = sess.current_summary
         _close(conversation_id)
+
+    # Fallback if they clicked stop too fast before live summary generated
+    if not summary_text and full_transcript.strip():
+        summary_text = await generate_one_off_summary(patient_name, full_transcript)
 
     return summary_text
 

@@ -53,6 +53,8 @@ async def store_face(
     patient_id: int = Form(..., description="ID of the patient this person belongs to"),
     name: str = Form(..., description="Full name of the person, e.g. 'Rahul Singh'"),
     relation: str = Form(..., description="Relation to patient, e.g. 'son'"),
+    is_family: bool = Form(False, description="Whether this is a family member to notify"),
+    family_member_email: str = Form(None, description="Email address for notifications"),
     file: UploadFile = File(..., description="Photo of the person (JPEG/PNG)"),
     db: Session = Depends(get_db),
     token_data: dict = Depends(verify_token),
@@ -68,6 +70,8 @@ async def store_face(
         name=name,
         relation=relation,
         is_known=True,
+        is_family=is_family,
+        family_member_email=family_member_email,
         image_url=image_url,
     )
     db.add(person)
@@ -186,12 +190,10 @@ async def match_face(
                 visitor_image  = result.get("image_url")
                 patient_name   = patient_obj.name
 
-                logger.info(
-                    "Sending visit notification for patient %s to %d family member(s)",
-                    patient_name, len(family_members),
-                )
+                print(f"DEBUG: Sending visit notification for patient {patient_name} to {len(family_members)} family member(s)")
 
                 for member in family_members:
+                    print(f"DEBUG: Preparing email for {member.family_member_email}")
                     kwargs = dict(
                         to_email=member.family_member_email,
                         visitor_name=visitor_name,
@@ -205,10 +207,7 @@ async def match_face(
                         daemon=True,
                     ).start()
             else:
-                logger.info(
-                    "No family members with email registered for patient %d — skipping notification.",
-                    patient_id,
-                )
+                print(f"DEBUG: No family members with email registered for patient {patient_id} — skipping notification.")
 
         # Check for history restriction (Severe Case Privacy)
         is_severe = (patient_obj.diagnosis_level or "").lower() == "severe"

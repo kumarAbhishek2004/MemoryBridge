@@ -170,7 +170,7 @@ async def finish_conversation(
     Retrieves summary from memory and triggers DB save in the background.
     """
     try:
-        summary = transcription_service.rest_finish_conversation(
+        summary = await transcription_service.rest_finish_conversation(
             conversation_id=body.conversation_id,
             patient_name=body.patient_name,
             full_transcript=body.full_transcript,

@@ -31,12 +31,16 @@ import { PatientTrackingMap } from "./PatientTrackingMap";
 const addFaceSchema = z.object({
   name:     z.string().min(2, "Name required"),
   relation: z.string().min(1, "Relation required"),
+  is_family: z.boolean().optional(),
+  family_member_email: z.string().email("Invalid email").optional().or(z.literal("")),
 });
 type AddFaceForm = z.infer<typeof addFaceSchema>;
 
 const labelSchema = z.object({
   name:     z.string().min(2, "Name required"),
   relation: z.string().min(1, "Relation required"),
+  is_family: z.boolean().optional(),
+  family_member_email: z.string().email("Invalid email").optional().or(z.literal("")),
 });
 type LabelForm = z.infer<typeof labelSchema>;
 
@@ -71,7 +75,14 @@ function AddFaceModal({
   const onSubmit = async (data: AddFaceForm) => {
     if (!file) { setFileError("Please select a photo."); return; }
     try {
-      const result = await storeKnownFace({ patientId, name: data.name, relation: data.relation, file }).unwrap();
+      const result = await storeKnownFace({ 
+        patientId, 
+        name: data.name, 
+        relation: data.relation, 
+        file,
+        is_family: data.is_family,
+        family_member_email: data.family_member_email
+      }).unwrap();
       const personId = result.data?.person_id;
       if (!personId) {
         onClose();
@@ -171,6 +182,27 @@ function AddFaceModal({
             </FormField>
           </div>
 
+          <div className="space-y-3">
+            <div className="flex items-center space-x-2 mt-2">
+              <input 
+                type="checkbox" 
+                id="f-family" 
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                {...register("is_family")}
+              />
+              <label htmlFor="f-family" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                This is a close family member
+              </label>
+            </div>
+            
+            <FormField label="Notification Email (Optional)" error={errors.family_member_email?.message} htmlFor="f-email">
+              <Input id="f-email" type="email" placeholder="family@example.com" {...register("family_member_email")} />
+            </FormField>
+            <p className="text-[11px] text-muted-foreground leading-tight">
+              If an email is provided, they will receive an instant notification whenever they visit the patient.
+            </p>
+          </div>
+
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
             <Button type="submit" size="sm" disabled={isStoring || isPolling}>
@@ -203,7 +235,13 @@ function LabelUnknownModal({
     await updatePerson({
       patientId,
       personId: person.id,
-      payload: { name: data.name, relation: data.relation, is_known: true },
+      payload: { 
+        name: data.name, 
+        relation: data.relation, 
+        is_known: true,
+        is_family: data.is_family,
+        family_member_email: data.family_member_email
+      },
     }).unwrap();
     onClose();
   };
@@ -218,7 +256,7 @@ function LabelUnknownModal({
             Mark this unknown face as a known person.
           </p>
         </div>
-        <form onSubmit={handleSubmit(onSubmit)} className="px-6 py-4 space-y-3">
+        <form onSubmit={handleSubmit(onSubmit)} className="px-6 py-4 space-y-4">
           {person.image_url ? (
             <div className="flex justify-center pb-2">
               <img 
@@ -240,6 +278,27 @@ function LabelUnknownModal({
           <FormField label="Relation" error={errors.relation?.message} htmlFor="l-relation" required>
             <Input id="l-relation" placeholder="Son" {...register("relation")} />
           </FormField>
+
+          <div className="space-y-3">
+            <div className="flex items-center space-x-2 mt-2">
+              <input 
+                type="checkbox" 
+                id="l-family" 
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                {...register("is_family")}
+              />
+              <label htmlFor="l-family" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                This is a close family member
+              </label>
+            </div>
+            
+            <FormField label="Notification Email (Optional)" error={errors.family_member_email?.message} htmlFor="l-email">
+              <Input id="l-email" type="email" placeholder="family@example.com" {...register("family_member_email")} />
+            </FormField>
+            <p className="text-[11px] text-muted-foreground leading-tight">
+              If an email is provided, they will receive an instant notification whenever they visit the patient.
+            </p>
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
             <Button type="submit" size="sm" disabled={isLoading}>

@@ -34,13 +34,13 @@ def _build_html(
 ) -> str:
     avatar = (
         f'<img src="{visitor_image_url}" alt="{visitor_name}" '
-        f'style="width:96px;height:96px;border-radius:50%;object-fit:cover;'
-        f'border:3px solid #10b981;margin-bottom:16px;" />'
+        f'style="display:block;width:96px;height:96px;border-radius:50%;object-fit:cover;'
+        f'border:3px solid #10b981;margin:0 auto 16px;" />'
         if visitor_image_url
         else (
             f'<div style="width:96px;height:96px;border-radius:50%;background:#d1fae5;'
-            f'display:flex;align-items:center;justify-content:center;margin:0 auto 16px;'
-            f'border:3px solid #10b981;font-size:36px;font-weight:700;color:#059669;">'
+            f'margin:0 auto 16px;border:3px solid #10b981;font-size:36px;font-weight:700;'
+            f'color:#059669;text-align:center;line-height:96px;">'
             f'{(visitor_name[0] if visitor_name else "?").upper()}</div>'
         )
     )
@@ -135,9 +135,7 @@ def send_visit_notification(
     recognition flow.
     """
     if not SMTP_USER or not SMTP_PASSWORD:
-        logger.warning(
-            "SMTP_USER / SMTP_PASSWORD not configured — skipping email notification."
-        )
+        print("DEBUG: SMTP_USER / SMTP_PASSWORD not configured in .env — skipping email notification.")
         return False
 
     visited_at = datetime.now().strftime("%d %b %Y, %I:%M %p")
@@ -157,13 +155,14 @@ def send_visit_notification(
     msg.attach(MIMEText(html, "html"))
 
     try:
+        print(f"DEBUG: Connecting to SMTP server {SMTP_HOST}:{SMTP_PORT} as {SMTP_USER}...")
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.ehlo()
             server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
             server.sendmail(msg["From"], [to_email], msg.as_string())
-        logger.info("Visit notification sent to %s", to_email)
+        print(f"DEBUG: Visit notification successfully sent to {to_email}!")
         return True
     except Exception as exc:
-        logger.error("Failed to send visit notification to %s: %s", to_email, exc)
+        print(f"DEBUG: Failed to send visit notification to {to_email}: {exc}")
         return False

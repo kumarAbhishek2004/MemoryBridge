@@ -56,26 +56,21 @@ _groq_llm = ChatGroq(
 _llm = _gemini_llm.with_fallbacks([_groq_llm])
 
 # ── System prompt ──────────────────────────────────────────────────────────────
-_SYSTEM_PROMPT = """You are an AI assistant helping Alzheimer's caregivers.
-Your task is to maintain a concise, structured summary of an ongoing conversation
-involving an Alzheimer's patient.
+_SYSTEM_PROMPT = """You are an AI assistant for a caregiver application.
+Your task is to maintain a concise, structured summary of an ongoing conversation.
 
 FOCUS ON:
-- Who is present (names and their relation to the patient)
-- Medical topics (medications, symptoms, appointments, dosages)
-- Important reminders or requests made during the conversation
-- Emotional tone (calm, anxious, confused, happy)
-- Any key events or decisions
+- Who is speaking and what they are discussing
+- Any requests, questions, or reminders
+- Emotional tone of the conversation
+- Key events, decisions, or actions mentioned
+- Medical topics (if any are mentioned)
 
 FORMAT:
 Return a clean, easy-to-read summary in 3-6 bullet points.
-Start each bullet with an emoji that fits the context:
-  👤 for people, 💊 for medication, 📅 for appointments,
-  ❤️ for emotional state, 📝 for reminders, ⚠️ for concerns.
+Start each bullet with an emoji that fits the context (e.g., 🗣️ for speech, ❓ for questions, ❤️ for emotions, 📝 for reminders).
 
-Keep the language simple — the patient or a caregiver may read this.
-Do NOT include irrelevant small talk or filler sentences.
-If nothing medically relevant has been said yet, write "• Conversation just started."
+Summarize everything that is said, including general conversation and small talk.
 """
 
 
@@ -85,7 +80,7 @@ class SummaryState:
     conversation_id: int
     patient_name: str
     sentences: list[str] = field(default_factory=list)
-    current_summary: str = "• Conversation just started."
+    current_summary: str = "• Waiting for conversation to begin..."
     last_updated: datetime = field(default_factory=datetime.utcnow)
 
     def add_sentence(self, text: str) -> None:
@@ -152,7 +147,7 @@ async def update_summary(conversation_id: int, new_sentence: str) -> str:
     ]
 
     try:
-        logger.info("Calling Gemini for summary update (conv %d, %d sentences)", conversation_id, len(state.sentences))
+        logger.error(f"DEBUG: Calling LLM for conv {conversation_id} with {len(state.sentences)} sentences")
         response = await _llm.ainvoke(messages)
         
         # Handle case where response.content is a list (e.g. multi-modal or newer Langchain versions)
@@ -164,16 +159,37 @@ async def update_summary(conversation_id: int, new_sentence: str) -> str:
         else:
             summary_text = str(response.content).strip()
             
-        logger.info("Gemini summary update successful for conv %d", conversation_id)
+        logger.error(f"DEBUG: LLM returned summary: {summary_text[:50]}...")
     except Exception as exc:
+        logger.error(f"DEBUG: LLM failed: {exc}")
         logger.error("LLM summarisation failed for conversation %d: %s", conversation_id, exc)
         # Keep the old summary rather than breaking the session
         summary_text = state.current_summary
 
     state.current_summary = summary_text
-    logger.debug(
-        "Summary updated for conversation %d (%d sentences)",
-        conversation_id,
-        len(state.sentences),
-    )
     return summary_text
+
+async def generate_one_off_summary(patient_name: str, full_transcript: str) -> str:
+    """Generate a summary directly from a full transcript string without using sessions."""
+    user_content = (
+        f"Patient name: {patient_name}\n\n"
+        f"Conversation transcript:\n{full_transcript}\n\n"
+        "Please produce a final summary."
+    )
+    messages = [SystemMessage(content=_SYSTEM_PROMPT), HumanMessage(content=user_content)]
+    try:
+        logger.error(f"DEBUG: Calling one-off summary for {patient_name}")
+        response = await _llm.ainvoke(messages)
+        if isinstance(response.content, list):
+            res_str = "".join(
+                str(part.get("text", "")) if isinstance(part, dict) else str(part)
+                for part in response.content
+            ).strip()
+        else:
+            res_str = str(response.content).strip()
+        logger.error(f"DEBUG: one-off summary returned: {res_str[:50]}...")
+        return res_str
+    except Exception as exc:
+        logger.error(f"DEBUG: one-off summary failed: {exc}")
+        logger.error("generate_one_off_summary failed: %s", exc)
+        return ""
