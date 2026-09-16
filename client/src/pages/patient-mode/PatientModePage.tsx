@@ -352,20 +352,27 @@ function PersonHistoryPanel({ personId, personName }: { personId: number; person
   const latestWithSummary = convs.find((c) => c.summary);
   const olderConvs = showAll ? convs.slice(1) : [];
 
+  const [lastVisitExpanded, setLastVisitExpanded] = useState(false);
+
   return (
     <div className="space-y-3">
       {latestWithSummary && (
-        <Card className="bg-primary/5 border-primary/20 shadow-sm">
-          <CardHeader className="p-4 pb-2 border-b border-primary/10 flex flex-row items-center justify-between space-y-0">
+        <Card className="overflow-hidden bg-primary/5 border-primary/20 shadow-sm">
+          <Button variant="ghost" onClick={() => setLastVisitExpanded(!lastVisitExpanded)} className="w-full h-auto px-4 py-3 flex items-center justify-between rounded-none hover:bg-primary/10">
             <div className="flex items-center gap-2">
               <Brain className="size-4 text-primary" />
               <CardTitle className="text-xs font-semibold uppercase tracking-tight text-primary">Last visit</CardTitle>
             </div>
-            <span className="text-xs text-muted-foreground font-medium">{timeAgo(latestWithSummary.started_at)}</span>
-          </CardHeader>
-          <CardContent className="p-4 pt-3">
-            <p className="text-sm leading-relaxed text-foreground whitespace-pre-line">{latestWithSummary.summary}</p>
-          </CardContent>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground font-medium">{timeAgo(latestWithSummary.started_at)}</span>
+              {lastVisitExpanded ? <ChevronUp className="size-4 text-primary" /> : <ChevronDown className="size-4 text-primary" />}
+            </div>
+          </Button>
+          {lastVisitExpanded && (
+            <CardContent className="p-4 pt-3 border-t border-primary/10">
+              <p className="text-sm leading-relaxed text-foreground whitespace-pre-line">{latestWithSummary.summary}</p>
+            </CardContent>
+          )}
         </Card>
       )}
 
@@ -651,7 +658,7 @@ function TranscriptionPanel({
             <h3 className="text-sm font-semibold tracking-tight m-0">Live Transcript</h3>
           </div>
           <div className="flex items-center gap-3 m-0 mt-0">
-            {autoStart && !isRecording && !error && (
+            {autoStart && !isRecording && !error && transcripts.length === 0 && (
               <span className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="size-3 animate-spin" /> Starting...
               </span>
@@ -662,7 +669,7 @@ function TranscriptionPanel({
               onClick={isRecording ? stopRecording : () => startRecording()}
               className="h-8 text-xs px-3 cursor-pointer"
             >
-              {isRecording ? <><Square className="size-3 mr-2" fill="currentColor" /> Stop</> : <><Mic className="size-3 mr-2" fill="currentColor" /> Start</>}
+              {isRecording ? <><Square className="size-3 mr-2" fill="currentColor" /> Stop</> : transcripts.length > 0 ? <><RefreshCw className="size-3 mr-2" /> Restart</> : <><Mic className="size-3 mr-2" fill="currentColor" /> Start</>}
             </Button>
           </div>
         </div>

@@ -341,11 +341,10 @@ async def rest_finish_conversation(
     summary_text = ""
     sess = get_session(conversation_id)
     if sess:
-        summary_text = sess.current_summary
         _close(conversation_id)
 
-    # Fallback if they clicked stop too fast before live summary generated
-    if not summary_text and full_transcript.strip():
+    # Always generate a fresh, comprehensive summary for the entire text
+    if full_transcript.strip():
         summary_text = await generate_one_off_summary(patient_name, full_transcript)
 
     return summary_text
