@@ -71,7 +71,7 @@ export function LiveTranscription({ patientId, patientName }: LiveTranscriptionP
           </div>
           
           <button 
-            onClick={() => { isRecording ? stopRecording() : startRecording(); }}
+            onClick={isRecording ? stopRecording : () => startRecording()}
             className={cn(
               "flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all shadow-sm",
               isRecording 

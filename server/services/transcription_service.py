@@ -293,16 +293,8 @@ async def rest_save_transcript_line(conversation_id: int, text: str) -> dict:
         db.add(row)
         db.commit()
         db.refresh(row)
-        
-        # Also try to update the live summary
-        summary = ""
-        try:
-            from server.ai.summary_pipeline import update_summary
-            summary = await update_summary(conversation_id, text)
-        except Exception as e:
-            logger.error(f"Live summary update failed: {e}")
 
-        return {"id": row.id, "text": row.text, "timestamp": row.timestamp.isoformat(), "summary": summary}
+        return {"id": row.id, "text": row.text, "timestamp": row.timestamp.isoformat(), "summary": ""}
     except Exception as exc:
         logger.error("rest_save_transcript_line failed: %s", exc)
         db.rollback()

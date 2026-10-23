@@ -187,7 +187,7 @@ async def match_face(
             if family_members:
                 visitor_name   = result.get("name") or "Someone"
                 visitor_relation = result.get("relation") or "visitor"
-                visitor_image  = result.get("image_url")
+                visitor_image  = result.get("image_url") or image_url
                 patient_name   = patient_obj.name
 
                 print(f"DEBUG: Sending visit notification for patient {patient_name} to {len(family_members)} family member(s)")
@@ -210,7 +210,7 @@ async def match_face(
                 print(f"DEBUG: No family members with email registered for patient {patient_id} — skipping notification.")
 
         # Check for history restriction (Severe Case Privacy)
-        is_severe = (patient_obj.diagnosis_level or "").lower() == "severe"
+        is_severe = (patient_obj.diagnosis_level or "").lower() == "severe" if patient_obj else False
         result["history_restricted"] = is_severe
 
         return MatchFaceResponse(

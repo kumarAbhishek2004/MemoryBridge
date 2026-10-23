@@ -1,5 +1,17 @@
 import { api } from "./api";
-import type { ApiResponse, Patient, Person, CreatePatientPayload, UpdatePatientPayload, CreatePersonPayload, UpdatePersonPayload } from "@/types";
+import type {
+  ApiResponse,
+  Patient,
+  Person,
+  CreatePatientPayload,
+  UpdatePatientPayload,
+  CreatePersonPayload,
+  UpdatePersonPayload,
+  TrackingLocation,
+  RoutineItem,
+  CreateRoutinePayload,
+  UpdateRoutinePayload,
+} from "@/types";
 
 export const patientApi = api.injectEndpoints({
   endpoints: (builder) => ({
@@ -109,8 +121,9 @@ export const patientApi = api.injectEndpoints({
         { type: "Recognition", id: `KNOWN-${patientId}` },
       ],
     }),
+
     // ── GET /tracking/patients/:patientId/locations ──────────────────────────────
-    getLocations: builder.query<any[], number>({
+    getLocations: builder.query<TrackingLocation[], number>({
       query: (patientId) => `/tracking/patients/${patientId}/locations`,
       providesTags: (result, _err, patientId) =>
         result
@@ -122,16 +135,83 @@ export const patientApi = api.injectEndpoints({
     }),
 
     // ── POST /tracking/locations ─────────────────────────────────────────────
-    recordLocation: builder.mutation<any, { patient_id: number; latitude: number; longitude: number }>({
+    recordLocation: builder.mutation<TrackingLocation, { patient_id: number; latitude: number; longitude: number }>({
       query: (payload) => ({
         url: "/tracking/locations",
         method: "POST",
         body: payload,
       }),
-      // Assuming we invalidate if we're also viewing the map at the same time,
-      // but usually the map polls. Still safe to invalidate.
       invalidatesTags: (_result, _err, { patient_id }) => [
         { type: "Location", id: `LIST-${patient_id}` }
+      ],
+    }),
+
+    // ── GET /patients/:patientId/routines ─────────────────────────────────────
+    getRoutines: builder.query<ApiResponse<RoutineItem[]>, number>({
+      query: (patientId) => `/patients/${patientId}/routines`,
+      providesTags: (result, _err, patientId) =>
+        result?.data
+          ? [
+              ...result.data.map(({ id }) => ({ type: "Routine" as const, id })),
+              { type: "Routine", id: `LIST-${patientId}` },
+            ]
+          : [{ type: "Routine", id: `LIST-${patientId}` }],
+    }),
+
+    // ── POST /patients/:patientId/routines ────────────────────────────────────
+    createRoutine: builder.mutation<ApiResponse<RoutineItem>, CreateRoutinePayload>({
+      query: (payload) => ({
+        url: `/patients/${payload.patient_id}/routines`,
+        method: "POST",
+        body: {
+          title: payload.title,
+          category: payload.category,
+          time: payload.time,
+          dosage: payload.dosage,
+          instructions: payload.instructions,
+          days_of_week: payload.days_of_week ?? "daily",
+          is_active: payload.is_active ?? true,
+        },
+      }),
+      invalidatesTags: (_result, _err, { patient_id }) => [
+        { type: "Routine", id: `LIST-${patient_id}` },
+      ],
+    }),
+
+    // ── PATCH /patients/:patientId/routines/:routineId ────────────────────────
+    updateRoutine: builder.mutation<ApiResponse<RoutineItem>, UpdateRoutinePayload>({
+      query: ({ patient_id, routine_id, ...body }) => ({
+        url: `/patients/${patient_id}/routines/${routine_id}`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: (_result, _err, { patient_id, routine_id }) => [
+        { type: "Routine", id: routine_id },
+        { type: "Routine", id: `LIST-${patient_id}` },
+      ],
+    }),
+
+    // ── DELETE /patients/:patientId/routines/:routineId ───────────────────────
+    deleteRoutine: builder.mutation<ApiResponse<void>, { patient_id: number; routine_id: number }>({
+      query: ({ patient_id, routine_id }) => ({
+        url: `/patients/${patient_id}/routines/${routine_id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_result, _err, { patient_id, routine_id }) => [
+        { type: "Routine", id: routine_id },
+        { type: "Routine", id: `LIST-${patient_id}` },
+      ],
+    }),
+
+    // ── POST /patients/:patientId/routines/:routineId/complete ────────────────
+    completeRoutine: builder.mutation<ApiResponse<RoutineItem>, { patient_id: number; routine_id: number }>({
+      query: ({ patient_id, routine_id }) => ({
+        url: `/patients/${patient_id}/routines/${routine_id}/complete`,
+        method: "POST",
+      }),
+      invalidatesTags: (_result, _err, { patient_id, routine_id }) => [
+        { type: "Routine", id: routine_id },
+        { type: "Routine", id: `LIST-${patient_id}` },
       ],
     }),
   }),
@@ -150,4 +230,9 @@ export const {
   useDeletePersonMutation,
   useGetLocationsQuery,
   useRecordLocationMutation,
+  useGetRoutinesQuery,
+  useCreateRoutineMutation,
+  useUpdateRoutineMutation,
+  useDeleteRoutineMutation,
+  useCompleteRoutineMutation,
 } = patientApi;

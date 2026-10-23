@@ -8,7 +8,7 @@ def verify_token(request: Request) -> dict:
     Dependency: verifies the caregiver JWT from cookie or Authorization header.
     Returns the decoded payload dict.
     """
-    token = request.cookies.get("access-token")
+    token = request.cookies.get("access-token") or request.cookies.get("patient-token")
 
     if not token:
         auth_header = request.headers.get("Authorization")

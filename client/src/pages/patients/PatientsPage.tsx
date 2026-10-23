@@ -25,9 +25,11 @@ const createPatientSchema = z.object({
   diagnosis_level: z.enum(["mild", "moderate", "severe"]).optional().or(z.literal("")),
   home_latitude: z.string().optional(),
   home_longitude: z.string().optional(),
-  safe_radius_meters: z.number().min(10).optional().default(100),
-  show_history_on_moderate: z.boolean().optional().default(false),
+  safe_radius_meters: z.number().min(10).optional(),
+  show_history_on_moderate: z.boolean().optional(),
 });
+
+type CreatePatientFormValues = z.infer<typeof createPatientSchema>;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const diagnosisColors: Record<string, string> = {
@@ -54,7 +56,13 @@ function AddPatientModal({ onClose }: { onClose: () => void }) {
   const {
     register, handleSubmit, setValue, watch,
     formState: { errors },
-  } = useForm<any>({ resolver: zodResolver(createPatientSchema) });
+  } = useForm<CreatePatientFormValues>({
+    resolver: zodResolver(createPatientSchema),
+    defaultValues: {
+      safe_radius_meters: 100,
+      show_history_on_moderate: false,
+    },
+  });
 
   const selectedDiagnosis = watch("diagnosis_level");
 
@@ -71,18 +79,18 @@ function AddPatientModal({ onClose }: { onClose: () => void }) {
         setLocLoading(false);
       },
       (err) => {
-        setLocError("Could not get location");
+        setLocError(err?.message || "Could not get location");
         setLocLoading(false);
       },
       { enableHighAccuracy: true }
     );
   };
 
-  const onSubmit: SubmitHandler<any> = async (data) => {
+  const onSubmit: SubmitHandler<CreatePatientFormValues> = async (data) => {
     await createPatient({
       name: data.name,
       age: data.age as number | undefined,
-      diagnosis_level: (data.diagnosis_level === "" ? undefined : data.diagnosis_level) as any,
+      diagnosis_level: (data.diagnosis_level === "" ? undefined : data.diagnosis_level) as ("mild" | "moderate" | "severe" | undefined),
       home_latitude: data.home_latitude,
       home_longitude: data.home_longitude,
       safe_radius_meters: data.safe_radius_meters as number | undefined,

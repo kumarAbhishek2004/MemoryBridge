@@ -85,11 +85,12 @@ def detect_faces(image_bytes: bytes) -> list[dict]:
     if isinstance(crops, torch.Tensor) and crops.ndim == 3:
         crops = crops.unsqueeze(0)
 
+    count = min(len(boxes), len(crops))
     results = []
-    for i, (box, prob) in enumerate(zip(boxes, probs)):
+    for i in range(count):
         results.append({
-            "box":        [int(v) for v in box],
-            "confidence": float(prob),
+            "box":        [int(v) for v in boxes[i]],
+            "confidence": float(probs[i]),
             "face_crop":  crops[i],   # tensor ready for the embedder
         })
 

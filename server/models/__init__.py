@@ -6,6 +6,7 @@ from server.models.patient import Patient
 from server.models.person import Person, FaceEmbedding
 from server.models.conversation import Conversation, Transcript, Summary
 from server.models.location import Location
+from server.models.routine import RoutineItem
 
 __all__ = [
     "User",
@@ -16,4 +17,5 @@ __all__ = [
     "Transcript",
     "Summary",
     "Location",
+    "RoutineItem",
 ]

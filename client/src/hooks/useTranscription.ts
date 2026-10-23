@@ -54,6 +54,7 @@ export function useTranscription(
 
   const [isRecording,    setIsRecording]    = useState(false);
   const [transcripts,    setTranscripts]    = useState<TranscriptLine[]>([]);
+  const [interimText,    setInterimText]    = useState<string>("");
   const [summary,        setSummary]        = useState<string>("");
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [error,          setError]          = useState<string | null>(null);
@@ -67,11 +68,12 @@ export function useTranscription(
   const sessionTokenRef    = useRef<number>(0);
   const lineIdRef          = useRef(0);
   const activePersonIdRef  = useRef<number | null | undefined>(undefined);
+  const interimTextRef     = useRef<string>("");
 
   // RTK Query mutations
   const [startConversation]  = useStartConversationMutation();
   const [saveTranscriptLine] = useSaveTranscriptLineMutation();
-  const [finishConversation] = useFinishConversationMutation();
+  const [finishConversation, { isLoading: isFinishing }] = useFinishConversationMutation();
 
   // ── Internal hardware stop (no state reset) ──────────────────────────────
   const _stopHardware = useCallback(() => {
@@ -94,6 +96,21 @@ export function useTranscription(
   // ── Stop ─────────────────────────────────────────────────────────────────
   const stopRecording = useCallback(async () => {
     _stopHardware();
+    const remainingInterim = interimTextRef.current.trim();
+    if (remainingInterim) {
+      transcriptLinesRef.current.push(remainingInterim);
+      setTranscripts((prev) => [
+        ...prev,
+        {
+          id: ++lineIdRef.current,
+          text: remainingInterim,
+          is_final: true,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    }
+    setInterimText("");
+    interimTextRef.current = "";
     setIsRecording(false);
     activePersonIdRef.current = undefined;
 
@@ -120,6 +137,8 @@ export function useTranscription(
     
     setError(null);
     setTranscripts([]);
+    setInterimText("");
+    interimTextRef.current = "";
     setSummary("");
     transcriptLinesRef.current = [];
     lineIdRef.current          = 0;
@@ -165,8 +184,9 @@ export function useTranscription(
         model:           "nova-2",
         language:        "en-US",
         smart_format:    "true",
-        interim_results: "false",
-        endpointing:     "400",
+        interim_results: "true",
+        endpointing:     "300",
+        punctuate:       "true",
       });
       const wsUrl = `${DEEPGRAM_WS_URL}?${params.toString()}`;
 
@@ -193,38 +213,42 @@ export function useTranscription(
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          // Deepgram sends different message types; we only care about Results
           if (data.type !== "Results") return;
 
           const sentence: string =
             data?.channel?.alternatives?.[0]?.transcript ?? "";
-          if (!sentence.trim() || !data.is_final) return;
+          if (!sentence.trim()) return;
 
-          // Show immediately in UI
-          setTranscripts((prev) => [
-            ...prev,
-            {
-              id:        ++lineIdRef.current,
-              text:      sentence,
-              is_final:  true,
-              timestamp: new Date().toISOString(),
-            },
-          ]);
+          if (data.is_final) {
+            setInterimText("");
+            interimTextRef.current = "";
 
-          // Buffer for summary on stop
-          transcriptLinesRef.current.push(sentence);
+            // Show immediately in UI
+            setTranscripts((prev) => [
+              ...prev,
+              {
+                id:        ++lineIdRef.current,
+                text:      sentence,
+                is_final:  true,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
 
-          // Persist to backend (fire-and-forget but capture summary)
-          const cidNow = conversationIdRef.current;
-          if (cidNow) {
-            saveTranscriptLine({ conversation_id: cidNow, text: sentence })
-              .unwrap()
-              .then((res: any) => {
-                if (res.data?.summary) {
-                  setSummary(res.data.summary);
-                }
-              })
-              .catch((err) => console.error("Failed to save transcript line:", err));
+            // Buffer for summary on stop
+            transcriptLinesRef.current.push(sentence);
+
+            // Persist to backend (fire-and-forget but capture summary)
+            const cidNow = conversationIdRef.current;
+            if (cidNow) {
+              saveTranscriptLine({ conversation_id: cidNow, text: sentence })
+                .unwrap()
+                
+                .catch((err) => console.error("Failed to save transcript line:", err));
+            }
+          } else {
+            // Live interim streaming speech: update in real time!
+            setInterimText(sentence);
+            interimTextRef.current = sentence;
           }
         } catch (parseErr) {
           console.warn("Failed to parse Deepgram message:", parseErr);
@@ -283,7 +307,9 @@ export function useTranscription(
 
   return {
     isRecording,
+    isFinishing,
     transcripts,
+    interimText,
     summary,
     conversationId,
     error,

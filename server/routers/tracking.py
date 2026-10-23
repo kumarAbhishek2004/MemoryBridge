@@ -4,14 +4,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from server.config.db import get_db
 from server.models.location import Location
+from server.models.patient import Patient
 from server.schemas.location import LocationCreate, LocationResponse
 
 router = APIRouter(tags=["Tracking"])
 
-# Configurable constants for Geofencing
-HOME_LAT = 28.7041     # Example safe center (Replace with actual if needed)
-HOME_LON = 77.1025
-SAFE_RADIUS_METERS = 50
+# Default fallback constants for Geofencing if patient home is not configured
+DEFAULT_SAFE_RADIUS_METERS = 100
 
 def haversine(lat1, lon1, lat2, lon2):
     """Calculate the great circle distance in meters between two points."""
@@ -40,9 +39,18 @@ def record_location(payload: LocationCreate, db: Session = Depends(get_db)):
         if time_diff > 0:
             speed_mps = distance / time_diff # Speed in Meters per second
             
-    # Calculate Distant from Home Geofence
-    dist_from_home = haversine(HOME_LAT, HOME_LON, payload.latitude, payload.longitude)
-    is_breached = dist_from_home > SAFE_RADIUS_METERS
+    # Calculate Distance from Home Geofence using patient profile
+    patient = db.get(Patient, payload.patient_id)
+    is_breached = False
+    if patient and patient.home_latitude and patient.home_longitude:
+        try:
+            home_lat = float(patient.home_latitude)
+            home_lon = float(patient.home_longitude)
+            safe_radius = patient.safe_radius_meters if patient.safe_radius_meters is not None else DEFAULT_SAFE_RADIUS_METERS
+            dist_from_home = haversine(home_lat, home_lon, payload.latitude, payload.longitude)
+            is_breached = dist_from_home > safe_radius
+        except (ValueError, TypeError):
+            pass
     
     new_loc = Location(
         patient_id=payload.patient_id,
@@ -72,7 +80,4 @@ def get_patient_path(patient_id: int, db: Session = Depends(get_db)):
         .filter(Location.patient_id == patient_id)\
         .order_by(Location.timestamp.asc())\
         .all()
-    # We parse manually or just return instances, but let's return instances directly. 
-    # FastAPI and Pydantic will serialize automatically.
     return locations
-

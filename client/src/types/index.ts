@@ -16,3 +16,6 @@ export type {
   ConversationRecord, ConversationTranscript, ConversationPerson, PersonConversationsData,
 } from "./conversation.types";
 export type { TrackingLocation } from "./location.types";
+export type {
+  RoutineItem, RoutineCategory, CreateRoutinePayload, UpdateRoutinePayload,
+} from "./routine.types";

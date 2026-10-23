@@ -8,6 +8,7 @@ import {
   Trash2, Pencil, CheckCircle2, UserCheck, UserX, ScanFace,
   MonitorSmartphone, ShieldCheck, ShieldX, Clock,
   Heart, MessageSquare, Brain, ChevronDown, ChevronUp, History,
+  Mail,
 } from "lucide-react";
 import {
   useGetPatientQuery,
@@ -26,6 +27,8 @@ import { Input } from "@/components/ui/input";
 import { FormField } from "@/components/ui/form-field";
 import { cn } from "@/lib/utils";
 import { PatientTrackingMap } from "./PatientTrackingMap";
+import { RoutineScheduleSection } from "./RoutineScheduleSection";
+import { RoutineReminderAlert } from "@/components/RoutineReminderAlert";
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 const addFaceSchema = z.object({
@@ -59,9 +62,11 @@ function AddFaceModal({
   const [file, setFile]       = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
 
-  const { register, handleSubmit, formState: { errors } } = useForm<AddFaceForm>({
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<AddFaceForm>({
     resolver: zodResolver(addFaceSchema),
+    defaultValues: { is_family: false },
   });
+  const isFamily = watch("is_family");
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -80,8 +85,8 @@ function AddFaceModal({
         name: data.name, 
         relation: data.relation, 
         file,
-        is_family: data.is_family,
-        family_member_email: data.family_member_email
+        is_family: !!data.is_family,
+        family_member_email: data.is_family ? (data.family_member_email || undefined) : undefined
       }).unwrap();
       const personId = result.data?.person_id;
       if (!personId) {
@@ -106,7 +111,7 @@ function AddFaceModal({
             setIsPolling(false);
             setFileError(statusRes.data?.error || "Failed to extract face embedding.");
           }
-        } catch (pollErr) {
+        } catch {
           clearInterval(pollInterval);
           setIsPolling(false);
           setFileError("Error checking job status.");
@@ -187,20 +192,24 @@ function AddFaceModal({
               <input 
                 type="checkbox" 
                 id="f-family" 
-                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
                 {...register("is_family")}
               />
-              <label htmlFor="f-family" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+              <label htmlFor="f-family" className="text-sm font-medium leading-none cursor-pointer">
                 This is a close family member
               </label>
             </div>
             
-            <FormField label="Notification Email (Optional)" error={errors.family_member_email?.message} htmlFor="f-email">
-              <Input id="f-email" type="email" placeholder="family@example.com" {...register("family_member_email")} />
-            </FormField>
-            <p className="text-[11px] text-muted-foreground leading-tight">
-              If an email is provided, they will receive an instant notification whenever they visit the patient.
-            </p>
+            {isFamily && (
+              <div className="space-y-1.5 animate-in fade-in duration-200">
+                <FormField label="Family Member Email (Optional)" error={errors.family_member_email?.message} htmlFor="f-email">
+                  <Input id="f-email" type="email" placeholder="family@example.com" {...register("family_member_email")} />
+                </FormField>
+                <p className="text-[11px] text-muted-foreground leading-tight">
+                  If an email is provided, they will receive an instant notification whenever someone visits the patient.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
@@ -226,10 +235,16 @@ function LabelUnknownModal({
   onClose: () => void;
 }) {
   const [updatePerson, { isLoading }] = useUpdatePersonMutation();
-  const { register, handleSubmit, formState: { errors } } = useForm<LabelForm>({
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<LabelForm>({
     resolver: zodResolver(labelSchema),
-    defaultValues: { name: person.name ?? "", relation: person.relation ?? "" },
+    defaultValues: {
+      name: person.name ?? "",
+      relation: person.relation ?? "",
+      is_family: person.is_family ?? false,
+      family_member_email: person.family_member_email ?? "",
+    },
   });
+  const isFamily = watch("is_family");
 
   const onSubmit = async (data: LabelForm) => {
     await updatePerson({
@@ -239,8 +254,8 @@ function LabelUnknownModal({
         name: data.name, 
         relation: data.relation, 
         is_known: true,
-        is_family: data.is_family,
-        family_member_email: data.family_member_email
+        is_family: !!data.is_family,
+        family_member_email: data.is_family ? (data.family_member_email || null) : null
       },
     }).unwrap();
     onClose();
@@ -284,20 +299,24 @@ function LabelUnknownModal({
               <input 
                 type="checkbox" 
                 id="l-family" 
-                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
                 {...register("is_family")}
               />
-              <label htmlFor="l-family" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+              <label htmlFor="l-family" className="text-sm font-medium leading-none cursor-pointer">
                 This is a close family member
               </label>
             </div>
             
-            <FormField label="Notification Email (Optional)" error={errors.family_member_email?.message} htmlFor="l-email">
-              <Input id="l-email" type="email" placeholder="family@example.com" {...register("family_member_email")} />
-            </FormField>
-            <p className="text-[11px] text-muted-foreground leading-tight">
-              If an email is provided, they will receive an instant notification whenever they visit the patient.
-            </p>
+            {isFamily && (
+              <div className="space-y-1.5 animate-in fade-in duration-200">
+                <FormField label="Family Member Email (Optional)" error={errors.family_member_email?.message} htmlFor="l-email">
+                  <Input id="l-email" type="email" placeholder="family@example.com" {...register("family_member_email")} />
+                </FormField>
+                <p className="text-[11px] text-muted-foreground leading-tight">
+                  If an email is provided, they will receive an instant notification whenever someone visits the patient.
+                </p>
+              </div>
+            )}
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
@@ -418,18 +437,27 @@ function FamilyEmailModal({
     onClose();
   };
 
+  const handleClearEmail = async () => {
+    await updatePerson({
+      patientId,
+      personId: person.id,
+      payload: { is_family: true, family_member_email: null },
+    }).unwrap();
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="w-full max-w-sm rounded-2xl border border-border bg-card shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         <div className="bg-gradient-to-br from-rose-500/15 to-pink-500/10 px-6 pt-6 pb-5 border-b border-border">
           <div className="flex items-center gap-3">
             <div className="flex size-9 items-center justify-center rounded-xl bg-rose-500/15">
-              <Heart className="size-4 text-rose-600" />
+              <Mail className="size-4 text-rose-600" />
             </div>
             <div>
-              <p className="font-semibold text-sm">Mark as Family Member</p>
+              <p className="font-semibold text-sm">Family Notification Email</p>
               <p className="text-xs text-muted-foreground">
-                We'll email them whenever {person.name ?? "this person"} visits.
+                For {person.name ?? "this family member"} ({person.relation ?? "Family"})
               </p>
             </div>
           </div>
@@ -437,13 +465,13 @@ function FamilyEmailModal({
         <div className="px-6 py-5 space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Family Member's Email
+              Notification Email
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => { setEmail(e.target.value); setError(""); }}
-              placeholder="rahul@gmail.com"
+              placeholder="family@example.com"
               className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 transition-colors"
               onKeyDown={(e) => e.key === "Enter" && handleSave()}
               autoFocus
@@ -451,24 +479,35 @@ function FamilyEmailModal({
             {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            A notification email will be sent to this address every time{" "}
-            <strong>{person.name ?? "this person"}</strong> is recognised visiting the patient.
+            An email with visitor photo and details will be sent to this address whenever someone visits the patient.
           </p>
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={onClose}
-              className="flex-1 rounded-xl border border-border py-2 text-sm font-medium hover:bg-muted transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={isLoading}
-              className="flex-1 rounded-xl bg-rose-500 text-white py-2 text-sm font-semibold hover:bg-rose-600 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
-            >
-              {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Heart className="size-4" />}
-              Save & Notify
-            </button>
+          <div className="flex items-center justify-between gap-2 pt-1">
+            {person.family_member_email ? (
+              <button
+                type="button"
+                onClick={handleClearEmail}
+                disabled={isLoading}
+                className="text-xs text-destructive hover:underline"
+              >
+                Clear Email
+              </button>
+            ) : <span />}
+            <div className="flex gap-2">
+              <button
+                onClick={onClose}
+                className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isLoading}
+                className="rounded-lg bg-rose-600 text-white px-4 py-2 text-sm font-semibold hover:bg-rose-700 disabled:opacity-60 transition-colors flex items-center gap-1.5"
+              >
+                {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />}
+                Save Email
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -542,35 +581,51 @@ function PersonRow({
               {person.relation && (
                 <p className="text-xs text-muted-foreground capitalize">{person.relation}</p>
               )}
-              {person.is_family && person.family_member_email && (
-                <p className="text-xs text-muted-foreground/70 truncate max-w-[180px]">
-                  ✉ {person.family_member_email}
-                </p>
+              {person.is_family && (
+                person.family_member_email ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowFamilyModal(true)}
+                    className="text-xs text-muted-foreground/80 hover:text-rose-600 transition-colors truncate max-w-[180px] flex items-center gap-1 cursor-pointer"
+                    title="Click to edit notification email"
+                  >
+                    <Mail className="size-3 text-rose-500" /> {person.family_member_email}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowFamilyModal(true)}
+                    className="text-[11px] text-rose-600 hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                    title="Add notification email for this family member"
+                  >
+                    <Mail className="size-3" /> + Add email
+                  </button>
+                )
               )}
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          {person.is_known && !person.is_family && (
-            <button
-              onClick={() => setShowFamilyModal(true)}
-              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-rose-600 transition-colors"
-              title="Mark as family member"
-            >
-              <Heart className="size-3.5" /> Add Family
-            </button>
-          )}
           {person.is_known && person.is_family && (
-            <button
-              onClick={handleRemoveFamily}
-              disabled={removing}
-              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 transition-colors"
-              title="Remove from family"
-            >
-              {removing ? <Loader2 className="size-3.5 animate-spin" /> : <Heart className="size-3.5" />}
-              Family
-            </button>
+            <>
+              <button
+                onClick={() => setShowFamilyModal(true)}
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-500/10 transition-colors"
+                title={person.family_member_email ? "Edit notification email" : "Add notification email"}
+              >
+                <Mail className="size-3.5" /> {person.family_member_email ? "Edit Email" : "Add Email"}
+              </button>
+              <button
+                onClick={handleRemoveFamily}
+                disabled={removing}
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-destructive transition-colors"
+                title="Remove from family"
+              >
+                {removing ? <Loader2 className="size-3.5 animate-spin" /> : <Heart className="size-3.5" />}
+                Remove Family
+              </button>
+            </>
           )}
           {!person.is_known && (
             <button
@@ -763,6 +818,9 @@ export default function PatientDetailPage() {
 
   return (
     <div className="space-y-6">
+      {/* Routine reminder modal / alert */}
+      <RoutineReminderAlert patientId={patientId} patientName={patient.name} />
+
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Link to="/patients" className="hover:text-foreground transition-colors">Patients</Link>
@@ -940,6 +998,11 @@ export default function PatientDetailPage() {
               </Button>
             </div>
           )}
+
+          {/* Daily Routine & Medication Section */}
+          <section>
+            <RoutineScheduleSection patientId={patientId} />
+          </section>
 
           {/* Tracking Map Section */}
           <section>

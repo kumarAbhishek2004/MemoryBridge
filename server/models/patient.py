@@ -14,6 +14,7 @@ class Patient(Base):
     - unknown faces
     - embeddings
     - conversations
+    - routines and medication schedules
     """
 
     __tablename__ = "patients"
@@ -54,6 +55,13 @@ class Patient(Base):
         "Conversation",
         back_populates="patient",
         cascade="all, delete-orphan",
+    )
+
+    routines = relationship(
+        "RoutineItem",
+        back_populates="patient",
+        cascade="all, delete-orphan",
+        order_by="RoutineItem.time",
     )
 
     def __repr__(self):

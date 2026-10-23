@@ -13,6 +13,8 @@ export {
   useCreatePatientMutation, useUpdatePatientMutation, useDeletePatientMutation,
   useGetPersonsQuery, useCreatePersonMutation, useUpdatePersonMutation, useDeletePersonMutation,
   useGetLocationsQuery, useRecordLocationMutation,
+  useGetRoutinesQuery, useCreateRoutineMutation, useUpdateRoutineMutation,
+  useDeleteRoutineMutation, useCompleteRoutineMutation,
 } from "./patientApi";
 
 export {

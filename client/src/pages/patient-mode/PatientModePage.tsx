@@ -2,7 +2,7 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import {
   Brain, Camera, CameraOff, ScanFace, Loader2, CheckCircle2,
   AlertCircle, UserX, UserCheck, Zap, Mic, Square, MessageSquare,
-  Clock, ChevronDown, ChevronUp, RefreshCw, Activity, History, Send,
+  Clock, ChevronDown, ChevronUp, RefreshCw, History, Send,
   Bell, Heart,
 } from "lucide-react";
 import { useAppSelector } from "@/store/hooks";
@@ -10,6 +10,8 @@ import { selectPatientSession } from "@/store/selectors";
 import { useMatchFaceMutation, useGetConversationsForPersonQuery, useSuggestIdentityMutation, useRecordLocationMutation } from "@/services";
 import type { MatchFaceData } from "@/types";
 import { useTranscription } from "@/hooks/useTranscription";
+import { RoutineReminderAlert } from "@/components/RoutineReminderAlert";
+import { PatientDailyScheduleHeaderButton } from "@/components/PatientDailyScheduleCard";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,7 +89,29 @@ function SuggestIdentityForm({
   const handleVoiceInput = (e: React.MouseEvent, field: "name" | "relation") => {
     e.preventDefault();
     if (listeningField === field) return;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const win = window as unknown as {
+      SpeechRecognition?: new () => {
+        lang: string;
+        interimResults: boolean;
+        maxAlternatives: number;
+        onstart: (() => void) | null;
+        onresult: ((event: { results: { [key: number]: { [key: number]: { transcript: string } } } }) => void) | null;
+        onerror: (() => void) | null;
+        onend: (() => void) | null;
+        start: () => void;
+      };
+      webkitSpeechRecognition?: new () => {
+        lang: string;
+        interimResults: boolean;
+        maxAlternatives: number;
+        onstart: (() => void) | null;
+        onresult: ((event: { results: { [key: number]: { [key: number]: { transcript: string } } } }) => void) | null;
+        onerror: (() => void) | null;
+        onend: (() => void) | null;
+        start: () => void;
+      };
+    };
+    const SpeechRecognition = win.SpeechRecognition || win.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
     const recognition = new SpeechRecognition();
@@ -100,7 +124,7 @@ function SuggestIdentityForm({
       setListeningField(field);
     };
 
-    recognition.onresult = (e: any) => {
+    recognition.onresult = (e) => {
       const transcript = e.results[0][0].transcript;
       if (field === "name") setName(transcript);
       else setRelation(transcript);
@@ -109,7 +133,7 @@ function SuggestIdentityForm({
 
     recognition.onerror = () => setListeningField(null);
     recognition.onend = () => setListeningField(null);
-    try { recognition.start(); } catch (err) { setListeningField(null); }
+    try { recognition.start(); } catch { setListeningField(null); }
   };
 
   const handleSubmit = async () => {
@@ -242,7 +266,7 @@ function RecognitionCard({
       <div>
         <p className="text-xs font-medium text-muted-foreground mb-1">Recognized Identity</p>
         <p className="text-2xl font-bold tracking-tight">{d.name}</p>
-        <Badge variant="secondary" className="mt-2 capitalize">{d.relation}</Badge>
+        <Badge variant="secondary" className={cn("mt-2 capitalize", relColor(d.relation))}>{d.relation}</Badge>
       </div>
       <div className="w-full max-w-[200px] mt-2">
         <div className="flex justify-between text-xs text-muted-foreground mb-1.5 font-medium">
@@ -306,7 +330,7 @@ function VisitorNotificationCard({
           <CardTitle className="text-2xl font-bold tracking-tight">{name}</CardTitle>
           <CardDescription className="text-sm mt-1">Someone is here to visit you</CardDescription>
           <div className="mt-3">
-            <Badge variant="secondary" className="capitalize text-sm font-medium px-3 py-1">{relation}</Badge>
+            <Badge variant="secondary" className={cn("capitalize text-sm font-medium px-3 py-1", relColor(relation))}>{relation}</Badge>
           </div>
         </CardHeader>
         <CardFooter className="pb-6">
@@ -324,6 +348,7 @@ function PersonHistoryPanel({ personId, personName }: { personId: number; person
   const { data, isLoading } = useGetConversationsForPersonQuery(personId);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [showAll, setShowAll]       = useState(false);
+  const [lastVisitExpanded, setLastVisitExpanded] = useState(false);
   const convs = data?.data?.conversations ?? [];
 
   if (isLoading) return (
@@ -351,8 +376,6 @@ function PersonHistoryPanel({ personId, personName }: { personId: number; person
 
   const latestWithSummary = convs.find((c) => c.summary);
   const olderConvs = showAll ? convs.slice(1) : [];
-
-  const [lastVisitExpanded, setLastVisitExpanded] = useState(false);
 
   return (
     <div className="space-y-3">
@@ -610,96 +633,165 @@ function TranscriptionPanel({
   patientId,
   patientName,
   personId,
-  autoStart,
+  personName,
 }: {
   patientId:   number;
   patientName: string;
   personId:    number | null;
-  autoStart:   boolean;
+  personName?: string | null;
 }) {
-  const { isRecording, transcripts, summary, error, startRecording, stopRecording } =
-    useTranscription(patientId, patientName, personId, { autoStart });
+  const { isRecording, isFinishing, transcripts, interimText, summary, error, startRecording, stopRecording } =
+    useTranscription(patientId, patientName, personId, { autoStart: false });
 
+  const [showHistory, setShowHistory] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [transcripts]);
+  }, [transcripts, interimText]);
 
   return (
-    <div className="flex flex-col h-full space-y-4">
-      <div className={cn("rounded-xl overflow-hidden transition-all shadow-sm bg-card ring-1 ring-foreground/10", isRecording ? "border-primary ring-1 ring-primary/20" : "")}>
-        <div className="p-4 pb-3 flex flex-row items-center justify-between border-b border-border/50">
-          <div className="flex items-center gap-2 mb-0">
-            <Brain className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold tracking-tight m-0">Live Summary</h3>
-          </div>
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* ── Clean Minimal Header ── */}
+      <div className="flex items-center justify-between shrink-0 pb-4 border-b border-border/60">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold tracking-tight text-foreground">Conversation</h2>
+          {personName && (
+            <span className="text-xs text-muted-foreground font-normal">
+              · {personName}
+            </span>
+          )}
           {isRecording && (
-            <div className="flex items-center gap-2 mb-0">
-               <span className="size-2 rounded-full bg-primary animate-pulse" />
-               <span className="text-xs font-semibold text-primary">Processing</span>
-            </div>
+            <span className="flex items-center gap-1.5 ml-1 px-2 py-0.5 rounded-full bg-rose-500/10 text-[11px] font-medium text-rose-600">
+              <span className="size-1.5 rounded-full bg-rose-500 animate-pulse" />
+              Live
+            </span>
           )}
         </div>
-        <div className="p-4 min-h-[80px]">
-          {summary ? (
-            <div className="text-sm leading-relaxed text-foreground whitespace-pre-line">{summary}</div>
-          ) : (
-            <p className="text-sm text-muted-foreground italic">
-              {isRecording ? "Listening and generating summary..." : "Start recording to get an AI summary."}
-            </p>
-          )}
-        </div>
-      </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden shadow-sm bg-card ring-1 ring-foreground/10 rounded-xl">
-        <div className="px-4 py-3 border-b border-border/50 flex flex-row items-center justify-between">
-          <div className="flex items-center gap-2 m-0 mt-0">
-            <MessageSquare className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold tracking-tight m-0">Live Transcript</h3>
-          </div>
-          <div className="flex items-center gap-3 m-0 mt-0">
-            {autoStart && !isRecording && !error && transcripts.length === 0 && (
-              <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="size-3 animate-spin" /> Starting...
-              </span>
-            )}
+        <div className="flex items-center gap-2.5">
+          {personId && (
+            <button
+              type="button"
+              onClick={() => setShowHistory(!showHistory)}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 px-2 py-1 rounded-md hover:bg-muted/60"
+            >
+              <History className="size-3.5" />
+              <span>Past visits</span>
+              {showHistory ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+            </button>
+          )}
+
+          {isRecording ? (
             <Button
               size="sm"
-              variant={isRecording ? "destructive" : "default"}
-              onClick={isRecording ? stopRecording : () => startRecording()}
-              className="h-8 text-xs px-3 cursor-pointer"
+              onClick={stopRecording}
+              disabled={isFinishing}
+              className="h-8 px-3 rounded-lg text-xs font-medium gap-1.5 bg-rose-600 hover:bg-rose-700 text-white shadow-none cursor-pointer"
             >
-              {isRecording ? <><Square className="size-3 mr-2" fill="currentColor" /> Stop</> : transcripts.length > 0 ? <><RefreshCw className="size-3 mr-2" /> Restart</> : <><Mic className="size-3 mr-2" fill="currentColor" /> Start</>}
+              <Square className="size-3 fill-current" /> Stop
             </Button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[120px]">
-          {transcripts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3 py-8 text-center">
-              <Activity className="size-8 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">
-                {isRecording ? "Listening..." : "Press Start to begin transcription."}
-              </p>
-            </div>
+          ) : transcripts.length > 0 || summary ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => startRecording()}
+              disabled={isFinishing}
+              className="h-8 px-3 rounded-lg text-xs font-medium gap-1.5 border-border hover:bg-muted shadow-none cursor-pointer"
+            >
+              <RefreshCw className="size-3" /> New conversation
+            </Button>
           ) : (
-            transcripts.map((line) => (
-              <div key={line.id} className="text-sm leading-relaxed border-l-2 border-primary/30 pl-3 py-1">
-                {line.text}
-              </div>
-            ))
+            <Button
+              size="sm"
+              onClick={() => startRecording()}
+              disabled={isFinishing}
+              className="h-8 px-3.5 rounded-lg text-xs font-medium gap-1.5 bg-foreground text-background hover:bg-foreground/90 shadow-none cursor-pointer"
+            >
+              <Mic className="size-3.5" /> Record
+            </Button>
           )}
-          <div ref={bottomRef} />
         </div>
-
-        {error && (
-          <div className="p-4 pt-0">
-            <div className="flex items-center gap-2 rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
-              <AlertCircle className="size-4 shrink-0" /> {error}
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* ── Optional Past Visits Dropdown ── */}
+      {showHistory && personId && (
+        <div className="shrink-0 max-h-44 overflow-y-auto my-3 p-3 bg-muted/30 border border-border/60 rounded-xl">
+          <PersonHistoryPanel personId={personId} personName={personName || "Visitor"} />
+        </div>
+      )}
+
+      {/* ── Main Conversation Stream (Minimal, clean typography) ── */}
+      <div className="flex-1 overflow-y-auto py-4 space-y-3.5 min-h-[160px] pr-1">
+        {transcripts.length === 0 && !interimText ? (
+          <div className="flex flex-col items-center justify-center h-full py-12 text-center text-muted-foreground/60">
+            <p className="text-xs">Click Record to start listening.</p>
+          </div>
+        ) : (
+          <>
+            {transcripts.map((line) => (
+              <div key={line.id} className="flex flex-col gap-0.5 text-sm group">
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground/60">
+                  <span className="font-medium text-foreground/80">{personName || "Speaker"}</span>
+                  <span>·</span>
+                  <span>{new Date(line.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <p className="text-sm leading-relaxed text-foreground/90">
+                  {line.text}
+                </p>
+              </div>
+            ))}
+
+            {/* Live Streaming Speech */}
+            {interimText && (
+              <div className="flex flex-col gap-0.5 text-sm animate-in fade-in duration-100">
+                <div className="flex items-center gap-1.5 text-[11px] text-rose-500 font-medium">
+                  <span className="size-1.5 rounded-full bg-rose-500 animate-pulse" />
+                  <span>Listening…</span>
+                </div>
+                <p className="text-sm italic text-muted-foreground leading-relaxed">
+                  {interimText}
+                </p>
+              </div>
+            )}
+          </>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* ── Clean Summary (Generated only after recording is stopped) ── */}
+      {(isFinishing || (!isRecording && summary)) && (
+        <div className="shrink-0 pt-3 border-t border-border/60 space-y-2 max-h-52 flex flex-col animate-in fade-in duration-200">
+          <div className="flex items-center justify-between text-xs shrink-0">
+            <span className="font-medium text-foreground flex items-center gap-1.5">
+              <Brain className="size-3.5 text-primary" />
+              <span>Summary</span>
+            </span>
+            {isFinishing && (
+              <span className="text-[11px] text-muted-foreground flex items-center gap-1.5 font-medium">
+                <Loader2 className="size-3 animate-spin text-primary" />
+                Summarizing conversation…
+              </span>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto text-xs sm:text-sm text-foreground/90 leading-relaxed pr-1 whitespace-pre-line bg-muted/20 border border-border/50 rounded-lg p-2.5">
+            {isFinishing ? (
+              <span className="text-muted-foreground italic text-xs">
+                Generating summary from the conversation…
+              </span>
+            ) : (
+              summary
+            )}
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-2 text-xs text-rose-600 bg-rose-500/10 px-3 py-1.5 rounded-md">
+          {error}
+        </div>
+      )}
     </div>
   );
 }
@@ -742,8 +834,6 @@ export default function PatientModePage() {
     return () => navigator.geolocation.clearWatch(watchId);
   }, [session?.patientId, recordLocation]);
 
-  if (!session) return null;
-
   const handleRecognised = useCallback((pid: number | null, name: string, isFamily: boolean, relation: string, imageUrl?: string) => {
     setRecognisedPersonId(pid);
     setRecognisedPersonName(name);
@@ -756,6 +846,8 @@ export default function PatientModePage() {
   const handleContinueAsUnknown = useCallback(() => {
     setAllowUnknownConversation(true);
   }, []);
+
+  if (!session) return null;
 
   return (
     <div className="h-full flex flex-col bg-background text-foreground">
@@ -770,11 +862,20 @@ export default function PatientModePage() {
             <h1 className="text-2xl font-bold tracking-tight leading-none">{session.patientName}</h1>
           </div>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-secondary border border-border shadow-sm">
-          <span className="size-2 rounded-full bg-primary animate-pulse" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-secondary-foreground">System Active</span>
+        <div className="flex items-center gap-3">
+          <PatientDailyScheduleHeaderButton patientId={session.patientId} />
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-secondary border border-border shadow-sm">
+            <span className="size-2 rounded-full bg-primary animate-pulse" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-secondary-foreground">System Active</span>
+          </div>
         </div>
       </header>
+
+      {/* ── Routine & Medication Reminder Alert (Audio Chime + Voice + Modal) ── */}
+      <RoutineReminderAlert
+        patientId={session.patientId}
+        patientName={session.patientName}
+      />
 
       {/* ── Visitor notification overlay ── */}
       {visitorNotification && (
@@ -791,36 +892,24 @@ export default function PatientModePage() {
         <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-8">
 
           {/* ── LEFT: Conversation panel ── */}
-          <section className="flex flex-col overflow-hidden gap-5 bg-card border border-border rounded-xl shadow-sm p-6">
-            <div className="flex items-center gap-2 shrink-0 border-b border-border pb-4">
-              <MessageSquare className="size-5 text-primary" />
-              <h2 className="text-lg font-bold tracking-tight">Active Conversation</h2>
-            </div>
-
+          <section className="flex flex-col overflow-hidden bg-card border border-border rounded-xl shadow-sm p-6 h-full">
             {recognisedPersonId || allowUnknownConversation ? (
-              <div className="flex-1 min-h-0 flex flex-col gap-6 overflow-y-auto pr-2">
-                {recognisedPersonId && (
-                  <div className="shrink-0">
-                    <PersonHistoryPanel personId={recognisedPersonId} personName={recognisedPersonName} />
-                  </div>
-                )}
-                <div className="flex-1 min-h-0 flex flex-col">
-                  <TranscriptionPanel
-                    patientId={session.patientId}
-                    patientName={session.patientName}
-                    personId={recognisedPersonId}
-                    autoStart={true}
-                  />
-                </div>
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                <TranscriptionPanel
+                  patientId={session.patientId}
+                  patientName={session.patientName}
+                  personId={recognisedPersonId}
+                  personName={recognisedPersonName}
+                />
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center flex-1 gap-4 text-center py-10">
+              <div className="flex flex-col flex-1 gap-6 justify-center items-center text-center py-12">
                 <div className="flex size-16 items-center justify-center rounded-full bg-muted border border-border shadow-sm">
                   <MessageSquare className="size-8 text-muted-foreground/50" />
                 </div>
                 <div>
-                  <p className="text-lg font-semibold tracking-tight">Awaiting Recognition</p>
-                  <p className="text-sm text-muted-foreground mt-2 max-w-[250px] mx-auto">Scan a face on the right to start recording the conversation context.</p>
+                  <p className="text-lg font-semibold tracking-tight">Awaiting Face Recognition</p>
+                  <p className="text-sm text-muted-foreground mt-2 max-w-[280px] mx-auto">Scan a face using the camera on the right to unlock live recording and conversation context.</p>
                 </div>
               </div>
             )}

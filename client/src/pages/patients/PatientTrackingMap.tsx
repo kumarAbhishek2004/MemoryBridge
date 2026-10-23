@@ -7,7 +7,7 @@ import { MapPin, Navigation, ShieldCheck } from "lucide-react";
 import type { TrackingLocation } from "@/types";
 
 // Fix default Leaflet icon paths in React
-delete (L.Icon.Default.prototype as any)._getIconUrl;
+delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
   iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
@@ -114,6 +114,12 @@ export function PatientTrackingMap({ patientId }: { patientId: number }) {
           <p className="text-xl font-semibold">{speed.toFixed(1)}</p>
           <p className="text-xs text-muted-foreground mt-0.5">Current Speed (m/s)</p>
         </div>
+        <div className="rounded-lg border border-border bg-card px-4 py-3">
+          <p className="text-xl font-semibold">
+            {currentDistFromHome < 1000 ? `${Math.round(currentDistFromHome)}m` : `${(currentDistFromHome / 1000).toFixed(2)}km`}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">Distance from Home</p>
+        </div>
         {isExceedingRadius ? (
           <div className="rounded-lg border border-border bg-card px-4 py-3">
             <p className="text-xl font-semibold text-amber-600">Travelling</p>
@@ -126,7 +132,7 @@ export function PatientTrackingMap({ patientId }: { patientId: number }) {
           <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
             <p className="text-xl font-semibold text-emerald-700">Safe at Home</p>
             <p className="text-xs text-emerald-600/80 mt-0.5 flex items-center">
-              <span className="size-2 rounded-full mr-2 bg-emerald-500"></span>
+              <ShieldCheck className="size-3.5 mr-1.5 text-emerald-600" />
               Within {safeRadius}m radius
             </p>
           </div>

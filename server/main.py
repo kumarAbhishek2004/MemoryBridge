@@ -16,6 +16,7 @@ from server.config.socket_server import sio
 # Register all models with SQLAlchemy before create_all
 from server.models import User, Patient, Person, FaceEmbedding
 from server.models import Conversation, Transcript, Summary
+from server.models import Location, RoutineItem
 
 # Routers
 from server.routers.auth import router as auth_router
@@ -24,6 +25,7 @@ from server.routers.patient import router as patient_router
 from server.routers.recognition import router as recognition_router
 from server.routers.transcription import router as transcription_router
 from server.routers.tracking import router as tracking_router
+from server.routers.routine import router as routine_router
 
 # Import transcription module so Socket.IO event handlers are registered
 import server.routers.transcription  # noqa: F401
@@ -57,6 +59,7 @@ app.include_router(patient_router)
 app.include_router(recognition_router)
 app.include_router(transcription_router)
 app.include_router(tracking_router)
+app.include_router(routine_router)
 
 # ── Socket.IO + FastAPI ASGI app ──────────────────────────────────────────────
 # Wrap the FastAPI app with Socket.IO so both HTTP and WS traffic go through

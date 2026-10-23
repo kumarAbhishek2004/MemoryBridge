@@ -168,7 +168,7 @@ function CameraScanner({
     try {
       const res = await matchFace({ patientId, file }).unwrap();
       onResult(res as { success: boolean; message: string; data?: MatchFaceData });
-    } catch (err: unknown) {
+    } catch {
       onResult({
         success: false,
         message: "Recognition failed.",

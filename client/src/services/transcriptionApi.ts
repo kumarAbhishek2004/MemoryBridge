@@ -46,9 +46,7 @@ export const transcriptionApi = api.injectEndpoints({
     >({
       query: (body) => ({ url: "/transcription/finish", method: "POST", body }),
       // Invalidate conversation lists so history page refreshes automatically
-      invalidatesTags: (_r, _e, body) => [
-        { type: "Conversation" as const, id: `LIST-${body.conversation_id}` },
-      ],
+      invalidatesTags: ["Conversation"],
     }),
 
     // ─ History / read endpoints ─────────────────────────────────────────────
