@@ -2,6 +2,7 @@ import math
 import datetime
 import threading
 import logging
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from server.config.db import get_db
@@ -9,7 +10,12 @@ from server.models.location import Location
 from server.models.patient import Patient
 from server.models.person import Person
 from server.schemas.location import LocationCreate, LocationResponse
-from server.services.email_service import send_geofence_alert
+from server.services.email_service import (
+    send_geofence_alert,
+    send_sos_alert,
+    send_fall_alert,
+)
+from server.services.sms_service import dispatch_emergency_phone_alerts
 
 logger = logging.getLogger(__name__)
 
@@ -37,39 +43,46 @@ def get_geofence_recipients(patient: Patient, db: Session) -> dict[str, dict]:
     """
     Collect all emergency notification recipients:
     1. Primary caregiver (patient's owner)
-    2. All registered family members with email addresses
+    2. All registered family members with email or phone addresses
     """
     recipients: dict[str, dict] = {}
 
-    # 1. Primary caretaker email (patient's owner)
+    # 1. Primary caretaker (patient's owner)
     if patient.owner and patient.owner.email and patient.owner.email.strip():
         em = patient.owner.email.strip().lower()
         recipients[em] = {
             "email": patient.owner.email.strip(),
             "name": patient.owner.name or "Caretaker",
+            "phone": (patient.emergency_phone or "").strip(),
         }
 
-    # 2. Registered family members with emails
+    # 2. Registered family members
     family_members = (
         db.query(Person)
         .filter(
             Person.patient_id == patient.id,
             Person.is_family == True,
-            Person.family_member_email != None,
-            Person.family_member_email != "",
         )
         .all()
     )
 
     for member in family_members:
-        if member.family_member_email and member.family_member_email.strip():
-            em = member.family_member_email.strip().lower()
-            if em not in recipients:
-                recipients[em] = {
-                    "email": member.family_member_email.strip(),
+        em = (member.family_member_email or "").strip().lower()
+        ph = (member.family_member_phone or "").strip()
+        if em or ph:
+            key = em if em else f"phone_{ph}_{member.id}"
+            if key not in recipients:
+                recipients[key] = {
+                    "email": member.family_member_email.strip() if member.family_member_email else "",
                     "name": member.name or "Family Member",
+                    "phone": ph,
                 }
     return recipients
+
+class CrisisPayload(BaseModel):
+    latitude: float | None = None
+    longitude: float | None = None
+    details: str | None = None
 
 @router.post("/tracking/locations", response_model=LocationResponse)
 def record_location(payload: LocationCreate, db: Session = Depends(get_db)):
@@ -114,23 +127,35 @@ def record_location(payload: LocationCreate, db: Session = Depends(get_db)):
             recipients = get_geofence_recipients(patient, db)
 
             if recipients:
-                print(f"DEBUG: Geofence breach! Dispatching alert emails to {len(recipients)} recipient(s) for patient {patient.name}")
+                print(f"DEBUG: Geofence breach! Dispatching alert emails & SMS/WhatsApp to {len(recipients)} recipient(s) for patient {patient.name}")
                 for rec in recipients.values():
-                    kwargs = dict(
-                        to_email=rec["email"],
-                        recipient_name=rec["name"],
-                        patient_name=patient.name,
-                        distance_meters=dist_from_home,
-                        safe_radius_meters=float(safe_radius),
-                        latitude=payload.latitude,
-                        longitude=payload.longitude,
-                        is_test=False,
-                    )
-                    threading.Thread(
-                        target=send_geofence_alert,
-                        kwargs=kwargs,
-                        daemon=True,
-                    ).start()
+                    if rec.get("email"):
+                        kwargs = dict(
+                            to_email=rec["email"],
+                            recipient_name=rec["name"],
+                            patient_name=patient.name,
+                            distance_meters=dist_from_home,
+                            safe_radius_meters=float(safe_radius),
+                            latitude=payload.latitude,
+                            longitude=payload.longitude,
+                            is_test=False,
+                        )
+                        threading.Thread(
+                            target=send_geofence_alert,
+                            kwargs=kwargs,
+                            daemon=True,
+                        ).start()
+
+                # Dispatch Instant SMS & WhatsApp notifications
+                dispatch_emergency_phone_alerts(
+                    patient_name=patient.name,
+                    event_title="Safe Perimeter Breached",
+                    event_description=f"Patient moved {dist_from_home:.0f}m from home (safe zone: {safe_radius}m).",
+                    latitude=payload.latitude,
+                    longitude=payload.longitude,
+                    distance_meters=dist_from_home,
+                    recipients=list(recipients.values()),
+                )
             else:
                 print(f"DEBUG: Geofence breach detected for patient {patient.name}, but no caretaker or family emails are registered.")
     elif not is_breached and patient and patient.id in _geofence_alert_cooldowns:
@@ -202,26 +227,189 @@ def trigger_test_geofence_alert(patient_id: int, db: Session = Depends(get_db)):
 
     print(f"DEBUG: Dispatching test buzzer alerts to {len(recipients)} recipient(s) for patient {patient.name}: {list(recipients.keys())}")
     for rec in recipients.values():
-        kwargs = dict(
-            to_email=rec["email"],
-            recipient_name=rec["name"],
-            patient_name=patient.name,
-            distance_meters=dist_meters,
-            safe_radius_meters=safe_radius,
-            latitude=lat,
-            longitude=lng,
-            is_test=True,
-        )
-        threading.Thread(
-            target=send_geofence_alert,
-            kwargs=kwargs,
-            daemon=True,
-        ).start()
+        if rec.get("email"):
+            kwargs = dict(
+                to_email=rec["email"],
+                recipient_name=rec["name"],
+                patient_name=patient.name,
+                distance_meters=dist_meters,
+                safe_radius_meters=safe_radius,
+                latitude=lat,
+                longitude=lng,
+                is_test=True,
+            )
+            threading.Thread(
+                target=send_geofence_alert,
+                kwargs=kwargs,
+                daemon=True,
+            ).start()
+
+    # Dispatch SMS & WhatsApp test alert
+    sms_count = dispatch_emergency_phone_alerts(
+        patient_name=patient.name,
+        event_title="Perimeter Buzzer Test Alert",
+        event_description="Emergency buzzer test alert was triggered.",
+        latitude=lat,
+        longitude=lng,
+        distance_meters=dist_meters,
+        recipients=list(recipients.values()),
+    )
 
     return {
         "success": True,
-        "message": f"Test alert emails dispatched to {len(recipients)} recipient(s).",
-        "recipients": [r["email"] for r in recipients.values()],
+        "message": f"Test alerts dispatched to {len(recipients)} recipient(s) (Email, SMS & WhatsApp).",
+        "recipients": [r["email"] for r in recipients.values() if r.get("email")],
+        "phone_recipients_count": sms_count,
+    }
+
+@router.post("/tracking/patients/{patient_id}/sos")
+def trigger_sos_alert(
+    patient_id: int,
+    payload: CrisisPayload = None,
+    db: Session = Depends(get_db),
+):
+    """
+    One-Touch Emergency SOS trigger:
+    Immediately broadcasts urgent alerts via Email, SMS, and WhatsApp
+    with live GPS coordinates to the caregiver and all registered family members.
+    """
+    patient = db.get(Patient, patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    recipients = get_geofence_recipients(patient, db)
+
+    latest_loc = (
+        db.query(Location)
+        .filter(Location.patient_id == patient.id)
+        .order_by(Location.timestamp.desc())
+        .first()
+    )
+
+    lat = (
+        payload.latitude
+        if payload and payload.latitude is not None
+        else (latest_loc.latitude if latest_loc else (float(patient.home_latitude) if patient.home_latitude else 31.4685))
+    )
+    lng = (
+        payload.longitude
+        if payload and payload.longitude is not None
+        else (latest_loc.longitude if latest_loc else (float(patient.home_longitude) if patient.home_longitude else 76.2708))
+    )
+
+    # Record emergency location point in database
+    now = datetime.datetime.utcnow()
+    emergency_loc = Location(
+        patient_id=patient.id,
+        latitude=lat,
+        longitude=lng,
+        timestamp=now,
+    )
+    db.add(emergency_loc)
+    db.commit()
+
+    # 1. Dispatch Email alerts to all recipients
+    for rec in recipients.values():
+        if rec.get("email"):
+            threading.Thread(
+                target=send_sos_alert,
+                kwargs=dict(
+                    to_email=rec["email"],
+                    recipient_name=rec["name"],
+                    patient_name=patient.name,
+                    latitude=lat,
+                    longitude=lng,
+                ),
+                daemon=True,
+            ).start()
+
+    # 2. Dispatch SMS and WhatsApp emergency alerts
+    sms_count = dispatch_emergency_phone_alerts(
+        patient_name=patient.name,
+        event_title="ONE-TOUCH EMERGENCY SOS PRESSED",
+        event_description="Patient pressed the Emergency Help Button requesting immediate assistance.",
+        latitude=lat,
+        longitude=lng,
+        recipients=list(recipients.values()),
+    )
+
+    print(f"DEBUG: Emergency SOS broadcasted for {patient.name} to {len(recipients)} recipients ({sms_count} phone alerts)")
+    return {
+        "success": True,
+        "message": f"Emergency SOS sent to {len(recipients)} recipient(s) via Email, SMS & WhatsApp.",
+        "latitude": lat,
+        "longitude": lng,
+        "sms_count": sms_count,
+    }
+
+@router.post("/tracking/patients/{patient_id}/fall-detected")
+def trigger_fall_alert(
+    patient_id: int,
+    payload: CrisisPayload = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Sudden Fall & Inactivity Alert trigger:
+    Broadcasts urgent fall notification via Email, SMS, and WhatsApp
+    when a sudden impact/drop is detected and unconfirmed by the patient.
+    """
+    patient = db.get(Patient, patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    recipients = get_geofence_recipients(patient, db)
+
+    latest_loc = (
+        db.query(Location)
+        .filter(Location.patient_id == patient.id)
+        .order_by(Location.timestamp.desc())
+        .first()
+    )
+
+    lat = (
+        payload.latitude
+        if payload and payload.latitude is not None
+        else (latest_loc.latitude if latest_loc else (float(patient.home_latitude) if patient.home_latitude else 31.4685))
+    )
+    lng = (
+        payload.longitude
+        if payload and payload.longitude is not None
+        else (latest_loc.longitude if latest_loc else (float(patient.home_longitude) if patient.home_longitude else 76.2708))
+    )
+
+    # 1. Dispatch Email alerts
+    for rec in recipients.values():
+        if rec.get("email"):
+            threading.Thread(
+                target=send_fall_alert,
+                kwargs=dict(
+                    to_email=rec["email"],
+                    recipient_name=rec["name"],
+                    patient_name=patient.name,
+                    latitude=lat,
+                    longitude=lng,
+                    response_timeout_seconds=20,
+                ),
+                daemon=True,
+            ).start()
+
+    # 2. Dispatch SMS and WhatsApp emergency alerts
+    sms_count = dispatch_emergency_phone_alerts(
+        patient_name=patient.name,
+        event_title="CRITICAL: POTENTIAL FALL DETECTED",
+        event_description="Sudden drop/impact detected; patient did not respond to safety check within 20s.",
+        latitude=lat,
+        longitude=lng,
+        recipients=list(recipients.values()),
+    )
+
+    print(f"DEBUG: Fall detection alert broadcasted for {patient.name} ({sms_count} phone alerts)")
+    return {
+        "success": True,
+        "message": f"Fall detection alert sent to {len(recipients)} recipient(s) via Email, SMS & WhatsApp.",
+        "latitude": lat,
+        "longitude": lng,
+        "sms_count": sms_count,
     }
 
 @router.get("/tracking/patients/{patient_id}/locations")

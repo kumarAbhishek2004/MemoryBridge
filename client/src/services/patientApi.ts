@@ -154,6 +154,24 @@ export const patientApi = api.injectEndpoints({
       }),
     }),
 
+    // ── POST /tracking/patients/:patientId/sos ───────────────────────────────
+    triggerSosAlert: builder.mutation<{ success: boolean; message: string; sms_count?: number }, { patient_id: number; latitude?: number; longitude?: number }>({
+      query: ({ patient_id, ...payload }) => ({
+        url: `/tracking/patients/${patient_id}/sos`,
+        method: "POST",
+        body: payload,
+      }),
+    }),
+
+    // ── POST /tracking/patients/:patientId/fall-detected ─────────────────────
+    triggerFallAlert: builder.mutation<{ success: boolean; message: string; sms_count?: number }, { patient_id: number; latitude?: number; longitude?: number }>({
+      query: ({ patient_id, ...payload }) => ({
+        url: `/tracking/patients/${patient_id}/fall-detected`,
+        method: "POST",
+        body: payload,
+      }),
+    }),
+
     // ── GET /patients/:patientId/routines ─────────────────────────────────────
     getRoutines: builder.query<ApiResponse<RoutineItem[]>, number>({
       query: (patientId) => `/patients/${patientId}/routines`,
@@ -239,6 +257,8 @@ export const {
   useGetLocationsQuery,
   useRecordLocationMutation,
   useTestGeofenceAlertMutation,
+  useTriggerSosAlertMutation,
+  useTriggerFallAlertMutation,
   useGetRoutinesQuery,
   useCreateRoutineMutation,
   useUpdateRoutineMutation,

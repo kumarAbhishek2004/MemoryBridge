@@ -31,6 +31,7 @@ class Person(Base):
     is_known = Column(Boolean, default=False)
     is_family = Column(Boolean, default=False)  # caregiver-designated family member
     family_member_email = Column(String, nullable=True)  # email to notify on visit
+    family_member_phone = Column(String, nullable=True)  # phone for SMS / WhatsApp alerts
     image_url = Column(String, nullable=True)
     pending_verification = Column(Boolean, default=False)  # patient suggested name/relation, awaiting caregiver approval
     suggested_name = Column(String, nullable=True)

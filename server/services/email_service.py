@@ -346,3 +346,148 @@ def send_visit_notification(
     except Exception as exc:
         print(f"DEBUG: Failed to send visit notification to {to_email}: {exc}")
         return False
+
+
+def send_sos_alert(
+    to_email: str,
+    recipient_name: str,
+    patient_name: str,
+    latitude: float,
+    longitude: float,
+) -> bool:
+    """
+    Send an immediate SOS Emergency Alert email to a caregiver or family member.
+    """
+    if not SMTP_USER or not SMTP_PASSWORD:
+        return False
+
+    alerted_at = datetime.now().strftime("%d %b %Y, %I:%M %p")
+    maps_url = f"https://www.google.com/maps?q={latitude:.6f},{longitude:.6f}"
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"🆘 URGENT SOS: {patient_name} pressed Emergency Help – MemoryBridge"
+    msg["From"] = SMTP_FROM or SMTP_USER
+    msg["To"] = to_email
+
+    html = f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#fef2f2;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px;">
+    <tr><td align="center">
+      <table width="540" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 6px 24px rgba(220,38,38,0.15);border:1px solid #fee2e2;">
+        <tr>
+          <td style="background:linear-gradient(135deg,#b91c1c,#7f1d1d);padding:32px 36px;text-align:center;">
+            <p style="margin:0 0 6px;color:#fecaca;font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">🚨 One-Touch Emergency SOS</p>
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:800;">{patient_name} requested immediate help!</h1>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px 36px;">
+            <p style="margin:0 0 16px;font-size:16px;color:#1f2937;">Hello <strong>{recipient_name}</strong>,</p>
+            <p style="margin:0 0 20px;font-size:15px;color:#4b5563;line-height:1.6;">
+              <strong>{patient_name}</strong> pressed the <strong>One-Touch Emergency SOS Help Button</strong> on their MemoryBridge companion. Immediate attention is required.
+            </p>
+            <table width="100%" cellpadding="6" cellspacing="0" style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;margin-bottom:24px;padding:12px 16px;">
+              <tr><td style="font-size:13px;color:#991b1b;font-weight:600;">Time:</td><td style="font-size:14px;color:#1f2937;">{alerted_at}</td></tr>
+              <tr><td style="font-size:13px;color:#991b1b;font-weight:600;">GPS Location:</td><td style="font-size:13px;color:#374151;font-family:monospace;">{latitude:.5f}, {longitude:.5f}</td></tr>
+            </table>
+            <div style="text-align:center;margin-bottom:24px;">
+              <a href="{maps_url}" target="_blank" style="display:inline-block;background:#dc2626;color:#ffffff;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:700;text-decoration:none;">📍 Open Live Map Location</a>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+"""
+    msg.attach(MIMEText(html, "html"))
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.ehlo(); server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(msg["From"], [to_email], msg.as_string())
+        print(f"DEBUG: SOS Emergency alert sent to {to_email}!")
+        return True
+    except Exception as exc:
+        print(f"DEBUG: Failed to send SOS alert to {to_email}: {exc}")
+        return False
+
+
+def send_fall_alert(
+    to_email: str,
+    recipient_name: str,
+    patient_name: str,
+    latitude: float,
+    longitude: float,
+    response_timeout_seconds: int = 20,
+) -> bool:
+    """
+    Send an urgent Fall Detection Alert email to a caregiver or family member.
+    """
+    if not SMTP_USER or not SMTP_PASSWORD:
+        return False
+
+    alerted_at = datetime.now().strftime("%d %b %Y, %I:%M %p")
+    maps_url = f"https://www.google.com/maps?q={latitude:.6f},{longitude:.6f}"
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"⚠️ CRITICAL: Potential Fall Detected for {patient_name} – MemoryBridge"
+    msg["From"] = SMTP_FROM or SMTP_USER
+    msg["To"] = to_email
+
+    html = f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#fff7ed;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px;">
+    <tr><td align="center">
+      <table width="540" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 6px 24px rgba(234,88,12,0.15);border:1px solid #ffedd5;">
+        <tr>
+          <td style="background:linear-gradient(135deg,#ea580c,#c2410c);padding:32px 36px;text-align:center;">
+            <p style="margin:0 0 6px;color:#ffedd5;font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">⚠️ Sudden Fall & Inactivity Detected</p>
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:800;">Fall alert triggered for {patient_name}!</h1>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px 36px;">
+            <p style="margin:0 0 16px;font-size:16px;color:#1f2937;">Hello <strong>{recipient_name}</strong>,</p>
+            <p style="margin:0 0 20px;font-size:15px;color:#4b5563;line-height:1.6;">
+              MemoryBridge sensors detected a <strong>sudden impact / rapid downward drop</strong> followed by immobility for <strong>{patient_name}</strong>. The patient did not dismiss the on-screen safety check within {response_timeout_seconds} seconds.
+            </p>
+            <table width="100%" cellpadding="6" cellspacing="0" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;margin-bottom:24px;padding:12px 16px;">
+              <tr><td style="font-size:13px;color:#c2410c;font-weight:600;">Incident Time:</td><td style="font-size:14px;color:#1f2937;">{alerted_at}</td></tr>
+              <tr><td style="font-size:13px;color:#c2410c;font-weight:600;">Unresponsive Duration:</td><td style="font-size:14px;color:#1f2937;">{response_timeout_seconds} seconds</td></tr>
+              <tr><td style="font-size:13px;color:#c2410c;font-weight:600;">GPS Coordinates:</td><td style="font-size:13px;color:#374151;font-family:monospace;">{latitude:.5f}, {longitude:.5f}</td></tr>
+            </table>
+            <div style="text-align:center;margin-bottom:24px;">
+              <a href="{maps_url}" target="_blank" style="display:inline-block;background:#ea580c;color:#ffffff;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:700;text-decoration:none;">📍 Check Location on Google Maps</a>
+            </div>
+            <div style="background:#fef2f2;border-left:4px solid #ef4444;padding:12px 16px;border-radius:4px;">
+              <p style="margin:0;font-size:13px;color:#991b1b;line-height:1.5;">
+                <strong>Recommended Action:</strong> Please contact {patient_name} or visit their location immediately to verify their physical condition.
+              </p>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+"""
+    msg.attach(MIMEText(html, "html"))
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.ehlo(); server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(msg["From"], [to_email], msg.as_string())
+        print(f"DEBUG: Fall alert sent to {to_email}!")
+        return True
+    except Exception as exc:
+        print(f"DEBUG: Failed to send fall alert to {to_email}: {exc}")
+        return False

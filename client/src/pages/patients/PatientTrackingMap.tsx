@@ -6,9 +6,11 @@ import {
   useGetLocationsQuery, 
   useGetPatientQuery, 
   useRecordLocationMutation,
-  useTestGeofenceAlertMutation 
+  useTestGeofenceAlertMutation,
+  useTriggerSosAlertMutation,
+  useTriggerFallAlertMutation,
 } from "@/services/patientApi";
-import { MapPin, Navigation, ShieldCheck, Volume2, VolumeX, Home, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { MapPin, Navigation, ShieldCheck, Volume2, VolumeX, Home, AlertTriangle, CheckCircle2, Loader2, AlertOctagon, ShieldAlert } from "lucide-react";
 import { audioAlert } from "@/utils/audioAlert";
 import type { TrackingLocation } from "@/types";
 
@@ -52,6 +54,8 @@ export function PatientTrackingMap({ patientId }: { patientId: number }) {
   const { data: patientResp } = useGetPatientQuery(patientId);
   const [recordLocation] = useRecordLocationMutation();
   const [testGeofenceAlert, { isLoading: isSendingAlert }] = useTestGeofenceAlertMutation();
+  const [triggerSos, { isLoading: isTriggeringSos }] = useTriggerSosAlertMutation();
+  const [triggerFall, { isLoading: isTriggeringFall }] = useTriggerFallAlertMutation();
   const patient = patientResp?.data;
 
   const [isBuzzerActive, setIsBuzzerActive] = useState<boolean>(() => audioAlert.isBuzzerActive());
@@ -206,6 +210,52 @@ export function PatientTrackingMap({ patientId }: { patientId: number }) {
               title="Simulate patient moving outside the safe boundary"
             >
               <AlertTriangle className="size-3 text-amber-600" /> Simulate Breach
+            </button>
+            <button
+              type="button"
+              disabled={isTriggeringSos}
+              onClick={async () => {
+                audioAlert.resume();
+                audioAlert.startContinuousBuzzer();
+                setAlertFeedback("SOS Emergency triggered! Dispatching SMS, WhatsApp, and Emails...");
+                try {
+                  const res = await triggerSos({
+                    patient_id: patientId,
+                    latitude: endLocation?.latitude,
+                    longitude: endLocation?.longitude,
+                  }).unwrap();
+                  setAlertFeedback(res.message);
+                } catch {
+                  setAlertFeedback("SOS triggered! Continuous buzzer sounding.");
+                }
+              }}
+              className="text-xs px-2.5 py-1 rounded-md bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-400 font-medium flex items-center gap-1 border border-rose-500/20 cursor-pointer transition-colors"
+              title="Simulate patient pressing SOS Emergency Help button"
+            >
+              <AlertOctagon className="size-3 text-rose-600" /> Test SOS
+            </button>
+            <button
+              type="button"
+              disabled={isTriggeringFall}
+              onClick={async () => {
+                audioAlert.resume();
+                audioAlert.startContinuousBuzzer();
+                setAlertFeedback("Fall detection alert triggered! Dispatching SMS, WhatsApp, and Emails...");
+                try {
+                  const res = await triggerFall({
+                    patient_id: patientId,
+                    latitude: endLocation?.latitude,
+                    longitude: endLocation?.longitude,
+                  }).unwrap();
+                  setAlertFeedback(res.message);
+                } catch {
+                  setAlertFeedback("Fall alert triggered! Continuous buzzer sounding.");
+                }
+              }}
+              className="text-xs px-2.5 py-1 rounded-md bg-orange-500/10 hover:bg-orange-500/20 text-orange-700 dark:text-orange-400 font-medium flex items-center gap-1 border border-orange-500/20 cursor-pointer transition-colors"
+              title="Simulate sudden fall detected for patient"
+            >
+              <ShieldAlert className="size-3 text-orange-600" /> Test Fall
             </button>
           </div>
         )}

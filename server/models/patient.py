@@ -32,6 +32,7 @@ class Patient(Base):
     home_latitude = Column(String, nullable=True)
     home_longitude = Column(String, nullable=True)
     safe_radius_meters = Column(Integer, nullable=True, default=100)
+    emergency_phone = Column(String, nullable=True)
 
     show_history_on_moderate = Column(Boolean, nullable=False, default=False)
 

@@ -3,7 +3,7 @@ import {
   Brain, Camera, CameraOff, ScanFace, Loader2, CheckCircle2,
   AlertCircle, UserX, UserCheck, Zap, Mic, Square, MessageSquare,
   Clock, ChevronDown, ChevronUp, RefreshCw, History, Send,
-  Bell, Heart,
+  Bell, Heart, AlertOctagon, ShieldAlert,
 } from "lucide-react";
 import { useAppSelector } from "@/store/hooks";
 import { selectPatientSession } from "@/store/selectors";
@@ -12,6 +12,8 @@ import type { MatchFaceData } from "@/types";
 import { useTranscription } from "@/hooks/useTranscription";
 import { RoutineReminderAlert } from "@/components/RoutineReminderAlert";
 import { PatientDailyScheduleHeaderButton } from "@/components/PatientDailyScheduleCard";
+import { EmergencyCrisisModal } from "@/components/EmergencyCrisisModal";
+import { useFallDetection } from "@/utils/useFallDetection";
 import { audioAlert } from "@/utils/audioAlert";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -806,7 +808,20 @@ export default function PatientModePage() {
   const [visitorNotification,  setVisitorNotification]  = useState<{ name: string; relation: string; imageUrl?: string } | null>(null);
   const [isOutsideSafeZone,    setIsOutsideSafeZone]    = useState(false);
   const [isBuzzerActive,       setIsBuzzerActive]       = useState(() => audioAlert.isBuzzerActive());
+  const [currentCoords,        setCurrentCoords]        = useState<{ latitude: number; longitude: number } | null>(null);
+  const [crisisModal,          setCrisisModal]          = useState<{ isOpen: boolean; type: "sos" | "fall" }>({ isOpen: false, type: "sos" });
   const [recordLocation] = useRecordLocationMutation();
+
+  const handleOpenCrisisModal = useCallback((type: "sos" | "fall") => {
+    setCrisisModal({ isOpen: true, type });
+  }, []);
+
+  const { triggerSimulatedFall } = useFallDetection({
+    onFallDetected: useCallback(() => {
+      handleOpenCrisisModal("fall");
+    }, [handleOpenCrisisModal]),
+    enabled: true,
+  });
 
   useEffect(() => {
     return audioAlert.onBuzzerChange((active) => {
@@ -832,6 +847,10 @@ export default function PatientModePage() {
     const watchId = navigator.geolocation.watchPosition(
       async (position) => {
         try {
+          setCurrentCoords({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
           const res = await recordLocation({
             patient_id: session.patientId,
             latitude: position.coords.latitude,
@@ -876,7 +895,7 @@ export default function PatientModePage() {
   return (
     <div className="h-full flex flex-col bg-background text-foreground">
       {/* ── Top greeting bar ── */}
-      <header className="px-8 py-5 border-b border-border bg-card shrink-0 shadow-sm flex items-center justify-between">
+      <header className="px-8 py-5 border-b border-border bg-card shrink-0 shadow-sm flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-4">
           <div className="flex size-12 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
             <Brain className="size-6" />
@@ -886,9 +905,32 @@ export default function PatientModePage() {
             <h1 className="text-2xl font-bold tracking-tight leading-none">{session.patientName}</h1>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* 🚨 One-Touch Emergency SOS Button */}
+          <button
+            type="button"
+            onClick={() => handleOpenCrisisModal("sos")}
+            className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-md shadow-rose-600/30 transition-transform active:scale-95 cursor-pointer animate-pulse border border-rose-500"
+            title="Press for immediate emergency assistance"
+          >
+            <AlertOctagon className="size-4 shrink-0" />
+            <span>SOS Help</span>
+          </button>
+
+          {/* ⚡ Simulate Fall Trigger (Testing) */}
+          <button
+            type="button"
+            onClick={triggerSimulatedFall}
+            className="px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 font-medium text-xs flex items-center gap-1.5 border border-amber-500/20 cursor-pointer transition-colors"
+            title="Simulate sudden fall detection for testing"
+          >
+            <ShieldAlert className="size-3.5 text-amber-600" />
+            <span className="hidden md:inline">Simulate Fall</span>
+          </button>
+
           <PatientDailyScheduleHeaderButton patientId={session.patientId} />
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-secondary border border-border shadow-sm">
+          
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-md bg-secondary border border-border shadow-sm">
             <span className="size-2 rounded-full bg-primary animate-pulse" />
             <span className="text-xs font-semibold uppercase tracking-wider text-secondary-foreground">System Active</span>
           </div>
@@ -935,6 +977,17 @@ export default function PatientModePage() {
       <RoutineReminderAlert
         patientId={session.patientId}
         patientName={session.patientName}
+      />
+
+      {/* ── Emergency SOS & Fall Detection Modal (Countdown + Auto Broadcast) ── */}
+      <EmergencyCrisisModal
+        patientId={session.patientId}
+        patientName={session.patientName}
+        isOpen={crisisModal.isOpen}
+        type={crisisModal.type}
+        latitude={currentCoords?.latitude}
+        longitude={currentCoords?.longitude}
+        onClose={() => setCrisisModal((prev) => ({ ...prev, isOpen: false }))}
       />
 
       {/* ── Visitor notification overlay ── */}
