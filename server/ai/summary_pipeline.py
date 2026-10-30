@@ -45,15 +45,21 @@ _gemini_llm = ChatGoogleGenerativeAI(
     google_api_key=GEMINI_API_KEY,
 )
 
-# Fallback model: Groq OSS
-_groq_llm = ChatGroq(
-    model="llama-3.1-8b-instant",
-    temperature=0.2,
-    api_key=GROQ_API_KEY,
-)
+# Fallback model: Groq OSS (optional if key provided)
+_fallbacks = []
+if GROQ_API_KEY:
+    try:
+        _groq_llm = ChatGroq(
+            model="llama-3.1-8b-instant",
+            temperature=0.2,
+            api_key=GROQ_API_KEY,
+        )
+        _fallbacks.append(_groq_llm)
+    except Exception as exc:
+        logger.warning(f"Could not initialize Groq fallback: {exc}")
 
 # Chain with fallback
-_llm = _gemini_llm.with_fallbacks([_groq_llm])
+_llm = _gemini_llm.with_fallbacks(_fallbacks) if _fallbacks else _gemini_llm
 
 # ── System prompt ──────────────────────────────────────────────────────────────
 _SYSTEM_PROMPT = """You are an AI assistant for a caregiver application.

@@ -19,3 +19,4 @@ export type { TrackingLocation } from "./location.types";
 export type {
   RoutineItem, RoutineCategory, CreateRoutinePayload, UpdateRoutinePayload,
 } from "./routine.types";
+export { isRoutineExpiredAfterDay1 } from "./routine.types";

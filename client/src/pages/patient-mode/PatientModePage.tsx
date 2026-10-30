@@ -12,6 +12,7 @@ import type { MatchFaceData } from "@/types";
 import { useTranscription } from "@/hooks/useTranscription";
 import { RoutineReminderAlert } from "@/components/RoutineReminderAlert";
 import { PatientDailyScheduleHeaderButton } from "@/components/PatientDailyScheduleCard";
+import { audioAlert } from "@/utils/audioAlert";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -803,7 +804,15 @@ export default function PatientModePage() {
   const [recognisedPersonName, setRecognisedPersonName] = useState<string>("");
   const [allowUnknownConversation, setAllowUnknownConversation] = useState(false);
   const [visitorNotification,  setVisitorNotification]  = useState<{ name: string; relation: string; imageUrl?: string } | null>(null);
+  const [isOutsideSafeZone,    setIsOutsideSafeZone]    = useState(false);
+  const [isBuzzerActive,       setIsBuzzerActive]       = useState(() => audioAlert.isBuzzerActive());
   const [recordLocation] = useRecordLocationMutation();
+
+  useEffect(() => {
+    return audioAlert.onBuzzerChange((active) => {
+      setIsBuzzerActive(active);
+    });
+  }, []);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -821,12 +830,27 @@ export default function PatientModePage() {
   useEffect(() => {
     if (!session?.patientId) return;
     const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        recordLocation({
-          patient_id: session.patientId,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        });
+      async (position) => {
+        try {
+          const res = await recordLocation({
+            patient_id: session.patientId,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          }).unwrap();
+
+          if (res?.geofence_alert) {
+            setIsOutsideSafeZone(true);
+            // Continuous buzzer alarm on breach: sounds continuously until stopped
+            if (!audioAlert.isBuzzerActive()) {
+              audioAlert.resume();
+              audioAlert.startContinuousBuzzer();
+            }
+          } else {
+            setIsOutsideSafeZone(false);
+          }
+        } catch (err) {
+          console.error("Location tracking error: ", err);
+        }
       },
       (error) => console.error("Location tracking error: ", error),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
@@ -870,6 +894,42 @@ export default function PatientModePage() {
           </div>
         </div>
       </header>
+
+      {/* ── Geofence Perimeter Warning Banner & Beep Indicator ── */}
+      {isOutsideSafeZone && (
+        <div className="bg-rose-500/10 border-b border-rose-500/20 text-rose-700 dark:text-rose-300 px-8 py-3 flex items-center justify-between shrink-0 animate-in fade-in slide-in-from-top duration-300">
+          <div className="flex items-center gap-3">
+            <div className="relative flex size-3 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75"></span>
+              <span className="relative inline-flex size-3 rounded-full bg-rose-500"></span>
+            </div>
+            <div>
+              <p className="text-sm font-semibold leading-tight">
+                Safety Boundary Alert: Outside designated safe area
+              </p>
+              <p className="text-xs text-rose-600/80 dark:text-rose-400/80 mt-0.5">
+                Caregiver and family members have been alerted via email with your live location.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (isBuzzerActive) {
+                audioAlert.stopContinuousBuzzer();
+              } else {
+                audioAlert.resume();
+                audioAlert.startContinuousBuzzer();
+              }
+            }}
+            className={`text-xs px-3 py-1.5 rounded-lg text-white font-medium transition-colors shadow-sm cursor-pointer ${
+              isBuzzerActive ? "bg-rose-700 hover:bg-rose-800 animate-pulse" : "bg-rose-600 hover:bg-rose-700"
+            }`}
+          >
+            {isBuzzerActive ? "Stop Buzzer" : "Test Buzzer"}
+          </button>
+        </div>
+      )}
 
       {/* ── Routine & Medication Reminder Alert (Audio Chime + Voice + Modal) ── */}
       <RoutineReminderAlert

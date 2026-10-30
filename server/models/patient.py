@@ -49,19 +49,29 @@ class Patient(Base):
         "Person",
         back_populates="patient",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     conversations = relationship(
         "Conversation",
         back_populates="patient",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     routines = relationship(
         "RoutineItem",
         back_populates="patient",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         order_by="RoutineItem.time",
+    )
+
+    locations = relationship(
+        "Location",
+        back_populates="patient",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     def __repr__(self):

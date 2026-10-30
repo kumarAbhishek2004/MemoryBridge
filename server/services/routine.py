@@ -52,12 +52,26 @@ def get_routines_for_patient(
     patient = _get_patient_or_404(patient_id, db)
     _assert_owns_patient(patient, owner_id)
 
-    return (
+    routines = (
         db.query(RoutineItem)
         .filter(RoutineItem.patient_id == patient_id)
         .order_by(RoutineItem.time.asc())
         .all()
     )
+
+    # Automatically deactivate 'once' items after Day 1 has passed
+    now_date = datetime.utcnow().date()
+    needs_commit = False
+    for r in routines:
+        if r.days_of_week == "once" and r.created_at and now_date > r.created_at.date():
+            if r.is_active:
+                r.is_active = False
+                needs_commit = True
+
+    if needs_commit:
+        db.commit()
+
+    return routines
 
 
 def update_routine(

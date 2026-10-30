@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   Clock, Plus, Pill, Utensils, Activity, Sparkles,
   CheckCircle2, Trash2, AlertCircle, X, Bell,
-  CalendarCheck, Volume2, Undo2,
+  CalendarCheck, Volume2, Undo2, Repeat, Calendar, Eye, EyeOff,
 } from "lucide-react";
 import { audioAlert } from "@/utils/audioAlert";
 import {
@@ -13,6 +13,7 @@ import {
   useCompleteRoutineMutation,
 } from "@/services";
 import type { RoutineItem, RoutineCategory } from "@/types";
+import { isRoutineExpiredAfterDay1 } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -259,18 +260,60 @@ function RoutineModal({
           </div>
 
           <div>
-            <label className="text-xs font-medium text-foreground block mb-1">
-              Repeat Days
+            <label className="text-xs font-medium text-foreground block mb-1.5">
+              Schedule Recurrence <span className="text-destructive">*</span>
             </label>
-            <select
-              value={daysOfWeek}
-              onChange={(e) => setDaysOfWeek(e.target.value)}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="daily">Every Day (Daily)</option>
-              <option value="mon,tue,wed,thu,fri">Weekdays (Mon - Fri)</option>
-              <option value="sat,sun">Weekends (Sat - Sun)</option>
-            </select>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => setDaysOfWeek("daily")}
+                className={cn(
+                  "flex flex-col items-start p-3 rounded-lg border text-left transition-all",
+                  daysOfWeek === "daily" || daysOfWeek === "mon,tue,wed,thu,fri" || daysOfWeek === "sat,sun"
+                    ? "border-primary bg-primary/10 text-foreground ring-1 ring-primary/30"
+                    : "border-border hover:bg-muted text-muted-foreground"
+                )}
+              >
+                <div className="flex items-center gap-1.5 font-semibold text-xs">
+                  <Repeat className="size-3.5 text-primary" />
+                  <span>Daily Schedule</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1 leading-normal">
+                  Repeats every day. Displays on web even after marked done.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDaysOfWeek("once")}
+                className={cn(
+                  "flex flex-col items-start p-3 rounded-lg border text-left transition-all",
+                  daysOfWeek === "once"
+                    ? "border-amber-500 bg-amber-500/10 text-foreground ring-1 ring-amber-500/30"
+                    : "border-border hover:bg-muted text-muted-foreground"
+                )}
+              >
+                <div className="flex items-center gap-1.5 font-semibold text-xs">
+                  <Calendar className="size-3.5 text-amber-500" />
+                  <span>Once (Day 1 only)</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1 leading-normal">
+                  Single-day task. Automatically removed from dashboard after Day 1.
+                </p>
+              </button>
+            </div>
+
+            {daysOfWeek !== "once" && (
+              <select
+                value={daysOfWeek}
+                onChange={(e) => setDaysOfWeek(e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="daily">Repeat: Every Day (Daily)</option>
+                <option value="mon,tue,wed,thu,fri">Repeat: Weekdays Only (Mon - Fri)</option>
+                <option value="sat,sun">Repeat: Weekends Only (Sat - Sun)</option>
+              </select>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-border">
@@ -297,15 +340,27 @@ export function RoutineScheduleSection({ patientId }: { patientId: number }) {
   const [filter, setFilter] = useState<string>("all");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<RoutineItem | null>(null);
+  const [showExpiredOnce, setShowExpiredOnce] = useState(false);
 
   const routines: RoutineItem[] = resp?.data ?? [];
 
-  const filtered: RoutineItem[] = routines.filter((r: RoutineItem) => {
+  // Filter routines: "if selected for once just simply remove it from dashboard after day 1"
+  const activeDashboardRoutines = routines.filter((r: RoutineItem) => {
+    const isExpiredOnce = isRoutineExpiredAfterDay1(r);
+    if (isExpiredOnce && !showExpiredOnce) {
+      return false; // Automatically removed from active dashboard
+    }
+    return true;
+  });
+
+  const filtered: RoutineItem[] = activeDashboardRoutines.filter((r: RoutineItem) => {
     if (filter === "all") return true;
     return r.category === filter;
   });
 
-  const completedCount = routines.filter((r: RoutineItem) => wasCompletedToday(r.last_completed_at)).length;
+  const expiredOnceCount = routines.filter((r) => isRoutineExpiredAfterDay1(r)).length;
+  const activeCount = routines.filter((r) => !isRoutineExpiredAfterDay1(r)).length;
+  const completedTodayCount = routines.filter((r) => !isRoutineExpiredAfterDay1(r) && wasCompletedToday(r.last_completed_at)).length;
 
   const handleToggleActive = async (routine: RoutineItem) => {
     await updateRoutine({
@@ -346,7 +401,7 @@ export function RoutineScheduleSection({ patientId }: { patientId: number }) {
           <div className="flex items-center gap-2">
             <div className="text-xs px-2.5 py-1 rounded-full bg-muted font-medium text-muted-foreground flex items-center gap-1.5">
               <span className="size-2 rounded-full bg-emerald-500" />
-              <span>{completedCount} of {routines.length} completed today</span>
+              <span>{completedTodayCount} of {activeCount} completed today</span>
             </div>
             <Button
               size="sm"
@@ -361,6 +416,18 @@ export function RoutineScheduleSection({ patientId }: { patientId: number }) {
             >
               <Volume2 className="size-3.5 text-primary" /> Test Alert Sound
             </Button>
+            {expiredOnceCount > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowExpiredOnce(!showExpiredOnce)}
+                className="gap-1 h-8 text-xs text-muted-foreground hover:text-foreground"
+                title="Toggle visibility of one-time routines that expired after Day 1"
+              >
+                {showExpiredOnce ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                {showExpiredOnce ? "Hide Expired" : `${expiredOnceCount} Expired (Once)`}
+              </Button>
+            )}
             <Button size="sm" onClick={() => { setEditingItem(null); setModalOpen(true); }} className="gap-1.5 h-8 text-xs">
               <Plus className="size-3.5" /> Add Routine
             </Button>
@@ -431,6 +498,15 @@ export function RoutineScheduleSection({ patientId }: { patientId: number }) {
                           {format12Hour(item.time)}
                         </span>
                         <h4 className="text-sm font-semibold text-foreground">{item.title}</h4>
+                        {item.days_of_week === "once" ? (
+                          <Badge variant="outline" className="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20 py-0 flex items-center gap-1">
+                            <Calendar className="size-2.5" /> Once (Day 1)
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] font-medium text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20 py-0 flex items-center gap-1">
+                            <Repeat className="size-2.5" /> Daily
+                          </Badge>
+                        )}
                         {item.dosage && (
                           <Badge variant="secondary" className="text-[11px] font-normal py-0">
                             {item.dosage}
@@ -452,10 +528,20 @@ export function RoutineScheduleSection({ patientId }: { patientId: number }) {
                           <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
                             <CheckCircle2 className="size-3" /> Completed today
                             {item.last_completed_at && ` (${toUtcDate(item.last_completed_at)?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
+                            <span className="text-muted-foreground/60 text-[10px] font-normal">
+                              {item.days_of_week === "daily" ? "· Repeats daily" : "· One-time task"}
+                            </span>
+                          </span>
+                        ) : isRoutineExpiredAfterDay1(item) ? (
+                          <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                            <AlertCircle className="size-3" /> Expired (after Day 1)
                           </span>
                         ) : (
                           <span className="text-muted-foreground flex items-center gap-1">
                             <Clock className="size-3" /> Pending today
+                            <span className="text-muted-foreground/60 text-[10px]">
+                              {item.days_of_week === "daily" ? "· Repeats daily" : "· Active on Day 1"}
+                            </span>
                           </span>
                         )}
                       </div>

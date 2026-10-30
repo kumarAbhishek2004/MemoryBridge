@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { useGetRoutinesQuery, useCompleteRoutineMutation } from "@/services";
 import type { RoutineItem, RoutineCategory } from "@/types";
+import { isRoutineExpiredAfterDay1 } from "@/types";
 import { Card, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,7 +54,7 @@ export function PatientDailyScheduleHeaderButton({ patientId }: { patientId: num
   const [completeRoutine] = useCompleteRoutineMutation();
   const [modalOpen, setModalOpen] = useState(false);
 
-  const routines: RoutineItem[] = (resp?.data ?? []).filter((r: RoutineItem) => r.is_active);
+  const routines: RoutineItem[] = (resp?.data ?? []).filter((r: RoutineItem) => r.is_active && !isRoutineExpiredAfterDay1(r));
   if (routines.length === 0) return null;
 
   const completedCount = routines.filter((r: RoutineItem) => wasCompletedToday(r.last_completed_at)).length;
@@ -182,7 +183,7 @@ export function PatientDailyScheduleCard({ patientId }: { patientId: number }) {
   const [completeRoutine] = useCompleteRoutineMutation();
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const routines: RoutineItem[] = (resp?.data ?? []).filter((r: RoutineItem) => r.is_active);
+  const routines: RoutineItem[] = (resp?.data ?? []).filter((r: RoutineItem) => r.is_active && !isRoutineExpiredAfterDay1(r));
   if (routines.length === 0) return null;
 
   const completedCount = routines.filter((r: RoutineItem) => wasCompletedToday(r.last_completed_at)).length;

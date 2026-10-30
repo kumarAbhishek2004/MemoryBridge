@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from server.models.patient import Patient
 from server.models.person import Person
 from server.models.conversation import Conversation
+from server.models.location import Location
 from server.schemas.patient import (
     CreatePatientRequest,
     UpdatePatientRequest,
@@ -95,6 +96,8 @@ def updatePatient(
 def deletePatient(patient_id: int, owner_id: int, db: Session) -> None:
     patient = _get_patient_or_404(patient_id, db)
     _assert_owns_patient(patient, owner_id)
+    # Explicitly clear dependent locations before removing patient
+    db.query(Location).filter(Location.patient_id == patient_id).delete(synchronize_session=False)
     db.delete(patient)
     db.commit()
 

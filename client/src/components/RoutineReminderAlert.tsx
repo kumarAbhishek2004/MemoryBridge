@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { useGetRoutinesQuery, useCompleteRoutineMutation } from "@/services";
 import type { RoutineItem } from "@/types";
+import { isRoutineExpiredAfterDay1 } from "@/types";
 import { Button } from "@/components/ui/button";
 import { audioAlert } from "@/utils/audioAlert";
 import { cn } from "@/lib/utils";
@@ -70,6 +71,7 @@ export function RoutineReminderAlert({
 
       for (const item of routines) {
         if (!item.is_active) continue;
+        if (isRoutineExpiredAfterDay1(item)) continue;
         if (wasCompletedToday(item.last_completed_at)) continue;
         if (dismissedSession[item.id]) continue;
 

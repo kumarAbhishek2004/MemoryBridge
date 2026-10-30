@@ -146,6 +146,14 @@ export const patientApi = api.injectEndpoints({
       ],
     }),
 
+    // ── POST /tracking/patients/:patientId/test-alert ────────────────────────
+    testGeofenceAlert: builder.mutation<{ success: boolean; message: string; recipients: string[] }, number>({
+      query: (patientId) => ({
+        url: `/tracking/patients/${patientId}/test-alert`,
+        method: "POST",
+      }),
+    }),
+
     // ── GET /patients/:patientId/routines ─────────────────────────────────────
     getRoutines: builder.query<ApiResponse<RoutineItem[]>, number>({
       query: (patientId) => `/patients/${patientId}/routines`,
@@ -230,6 +238,7 @@ export const {
   useDeletePersonMutation,
   useGetLocationsQuery,
   useRecordLocationMutation,
+  useTestGeofenceAlertMutation,
   useGetRoutinesQuery,
   useCreateRoutineMutation,
   useUpdateRoutineMutation,
